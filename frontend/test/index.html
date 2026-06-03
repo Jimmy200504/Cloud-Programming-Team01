@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Fridge Account</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Smart Fridge</p>
+            <h1>Account & Face Registration</h1>
+          </div>
+          <div class="status-pill" id="sessionStatus">Signed out</div>
+        </header>
+
+        <div class="grid">
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Account</h2>
+              <span id="accountState">Cognito</span>
+            </div>
+
+            <form id="signupForm" class="form-stack">
+              <label>
+                Email
+                <input id="signupEmail" type="email" autocomplete="email" required />
+              </label>
+              <label>
+                Display name
+                <input id="signupName" type="text" autocomplete="name" />
+              </label>
+              <label>
+                Password
+                <input id="signupPassword" type="password" autocomplete="new-password" required />
+                <span class="field-hint">At least 8 characters with uppercase, lowercase, and a number.</span>
+              </label>
+              <button type="submit">Create account</button>
+            </form>
+
+            <div class="divider"></div>
+
+            <form id="confirmForm" class="form-stack">
+              <label>
+                Confirmation code
+                <input id="confirmCode" type="text" inputmode="numeric" autocomplete="one-time-code" />
+              </label>
+              <button type="submit">Confirm account</button>
+              <button id="resendCode" type="button" class="secondary">Resend code</button>
+            </form>
+
+            <div class="divider"></div>
+
+            <form id="loginForm" class="form-stack">
+              <label>
+                Email
+                <input id="loginEmail" type="email" autocomplete="email" required />
+              </label>
+              <label>
+                Password
+                <input id="loginPassword" type="password" autocomplete="current-password" required />
+              </label>
+              <button type="submit">Sign in</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Face Image</h2>
+              <span id="uploadState">Ready</span>
+            </div>
+
+            <form id="faceForm" class="form-stack">
+              <label>
+                Face image
+                <input id="faceImage" type="file" accept="image/jpeg,image/jpg,image/png" required />
+              </label>
+              <div class="preview-frame">
+                <img id="previewImage" alt="" />
+                <span id="previewEmpty">No image selected</span>
+              </div>
+              <button type="submit">Upload face</button>
+            </form>
+
+            <div class="result-block">
+              <div class="panel-heading compact">
+                <h2>Latest Result</h2>
+                <button id="clearOutput" type="button" class="secondary">Clear</button>
+              </div>
+              <pre id="output">{}</pre>
+            </div>
+          </section>
+
+          <section class="panel wide">
+            <div class="panel-heading">
+              <h2>Owner Check</h2>
+              <span id="ownerCheckState">Test</span>
+            </div>
+
+            <form id="ownerCheckForm" class="form-stack owner-grid">
+              <label>
+                Food name
+                <input id="ownerFoodName" type="text" value="milk" required />
+              </label>
+              <label>
+                Owner email
+                <input id="ownerEmail" type="email" placeholder="owner@example.com" />
+              </label>
+              <label>
+                Owner user id
+                <input id="ownerUserId" type="text" placeholder="optional Cognito sub" />
+              </label>
+              <label>
+                Expiration date
+                <input id="ownerExpirationDate" type="date" required />
+              </label>
+              <label class="wide-field">
+                Face image
+                <input id="ownerFaceImage" type="file" accept="image/jpeg,image/jpg,image/png" required />
+              </label>
+              <button type="submit">Check owner</button>
+            </form>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

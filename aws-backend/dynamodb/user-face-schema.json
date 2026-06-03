@@ -1,0 +1,40 @@
+{
+  "tableName": "SmartFridgeUserFaces-${StageName}",
+  "billingMode": "PAY_PER_REQUEST",
+  "primaryKey": {
+    "partitionKey": "userId"
+  },
+  "attributes": {
+    "userId": "Cognito sub string",
+    "username": "Cognito username string",
+    "email": "Cognito email string",
+    "displayName": "Cognito name string",
+    "faceImageBucket": "S3 bucket name",
+    "faceImageS3Key": "S3 object key",
+    "rekognitionCollectionId": "string",
+    "rekognitionFaceId": "string",
+    "imageContentType": "image/jpeg or image/png",
+    "createdAt": "ISO 8601 UTC timestamp",
+    "updatedAt": "ISO 8601 UTC timestamp"
+  },
+  "globalSecondaryIndexes": [
+    {
+      "name": "FaceIdIndex",
+      "partitionKey": "rekognitionFaceId",
+      "projection": "ALL"
+    }
+  ],
+  "exampleItem": {
+    "userId": "cognito-sub",
+    "username": "alice@example.com",
+    "email": "alice@example.com",
+    "displayName": "Alice",
+    "faceImageBucket": "smart-fridge-user-faces-dev-491919374787",
+    "faceImageS3Key": "user-faces/cognito-sub/profile-2026-06-03T10-00-00.000Z.jpg",
+    "rekognitionCollectionId": "smart-fridge-users",
+    "rekognitionFaceId": "rekognition-face-id",
+    "imageContentType": "image/jpeg",
+    "createdAt": "2026-06-03T10:00:00Z",
+    "updatedAt": "2026-06-03T10:00:00Z"
+  }
+}

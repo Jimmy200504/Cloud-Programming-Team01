@@ -1,0 +1,35 @@
+{
+  "tableName": "SmartFridgeFoods-${StageName}",
+  "billingMode": "PAY_PER_REQUEST",
+  "primaryKey": {
+    "partitionKey": "foodId"
+  },
+  "attributes": {
+    "foodId": "string",
+    "ownerUserId": "string",
+    "ownerEmail": "string",
+    "foodName": "string",
+    "expirationDate": "YYYY-MM-DD string",
+    "deviceId": "string",
+    "createdAt": "ISO 8601 UTC timestamp",
+    "updatedAt": "ISO 8601 UTC timestamp"
+  },
+  "globalSecondaryIndexes": [
+    {
+      "name": "OwnerExpirationIndex",
+      "partitionKey": "ownerUserId",
+      "sortKey": "expirationDate",
+      "projection": "ALL"
+    }
+  ],
+  "exampleItem": {
+    "foodId": "food-uuid",
+    "ownerUserId": "cognito-sub",
+    "ownerEmail": "alice@example.com",
+    "foodName": "milk",
+    "expirationDate": "2026-06-10",
+    "deviceId": "smart-fridge-001",
+    "createdAt": "2026-06-03T10:00:00Z",
+    "updatedAt": "2026-06-03T10:00:00Z"
+  }
+}
