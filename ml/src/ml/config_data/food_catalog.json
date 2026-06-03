@@ -1,0 +1,122 @@
+[
+  {
+    "id": "soy_milk",
+    "display_name": "Soy milk",
+    "zh_name": "豆漿",
+    "aliases": ["soy milk", "soymilk", "豆漿", "豆浆"],
+    "parent": "milk",
+    "category": "beverage"
+  },
+  {
+    "id": "milk",
+    "display_name": "Milk",
+    "zh_name": "牛奶",
+    "aliases": ["milk", "牛奶"],
+    "parent": null,
+    "category": "beverage"
+  },
+  {
+    "id": "apple",
+    "display_name": "Apple",
+    "zh_name": "蘋果",
+    "aliases": ["apple", "蘋果", "苹果"],
+    "parent": "fruit",
+    "category": "fruit"
+  },
+  {
+    "id": "banana",
+    "display_name": "Banana",
+    "zh_name": "香蕉",
+    "aliases": ["banana", "香蕉"],
+    "parent": "fruit",
+    "category": "fruit"
+  },
+  {
+    "id": "egg",
+    "display_name": "Egg",
+    "zh_name": "蛋",
+    "aliases": ["egg", "eggs", "蛋", "雞蛋", "鸡蛋"],
+    "parent": null,
+    "category": "protein"
+  },
+  {
+    "id": "bread",
+    "display_name": "Bread",
+    "zh_name": "麵包",
+    "aliases": ["bread", "toast", "麵包", "面包", "吐司"],
+    "parent": null,
+    "category": "bakery"
+  },
+  {
+    "id": "cheese",
+    "display_name": "Cheese",
+    "zh_name": "起司",
+    "aliases": ["cheese", "起司", "乳酪"],
+    "parent": null,
+    "category": "dairy"
+  },
+  {
+    "id": "yogurt",
+    "display_name": "Yogurt",
+    "zh_name": "優格",
+    "aliases": ["yogurt", "yoghurt", "優格", "优格", "酸奶"],
+    "parent": null,
+    "category": "dairy"
+  },
+  {
+    "id": "chicken",
+    "display_name": "Chicken",
+    "zh_name": "雞肉",
+    "aliases": ["chicken", "雞肉", "鸡肉"],
+    "parent": "meat",
+    "category": "meat"
+  },
+  {
+    "id": "pork",
+    "display_name": "Pork",
+    "zh_name": "豬肉",
+    "aliases": ["pork", "豬肉", "猪肉"],
+    "parent": "meat",
+    "category": "meat"
+  },
+  {
+    "id": "beef",
+    "display_name": "Beef",
+    "zh_name": "牛肉",
+    "aliases": ["beef", "牛肉"],
+    "parent": "meat",
+    "category": "meat"
+  },
+  {
+    "id": "fish",
+    "display_name": "Fish",
+    "zh_name": "魚",
+    "aliases": ["fish", "魚", "鱼"],
+    "parent": null,
+    "category": "seafood"
+  },
+  {
+    "id": "vegetable",
+    "display_name": "Vegetable",
+    "zh_name": "蔬菜",
+    "aliases": ["vegetable", "vegetables", "蔬菜"],
+    "parent": null,
+    "category": "vegetable"
+  },
+  {
+    "id": "fruit",
+    "display_name": "Fruit",
+    "zh_name": "水果",
+    "aliases": ["fruit", "fruits", "水果"],
+    "parent": null,
+    "category": "fruit"
+  },
+  {
+    "id": "beverage",
+    "display_name": "Beverage",
+    "zh_name": "飲料",
+    "aliases": ["beverage", "drink", "飲料", "饮料"],
+    "parent": null,
+    "category": "beverage"
+  }
+]

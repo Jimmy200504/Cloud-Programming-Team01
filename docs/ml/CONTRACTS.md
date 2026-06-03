@@ -1,299 +1,193 @@
 # ML Contracts
 
-These contracts are stable integration points for HMI, Cloud, Hardware, and Frontend teams.
+All public functions accept and return dictionaries. Dates use `YYYY-MM-DD`; timestamps use ISO-8601.
 
-All timestamps should use ISO-8601 strings. All dates should use `YYYY-MM-DD`.
+Supported media refs:
 
-## 1. Common Request Metadata
+```json
+{"type": "local_path", "value": "/path/to/file"}
+```
+
+Also supported: `s3_uri`, `bytes_base64`. Expiration audio also accepts `transcript_text` for direct transcript testing.
+
+## Face Auth
+
+Function: `ml_authenticate_face(request)`
+
+Request:
 
 ```json
 {
-  "request_id": "ml-req-20260603-000001",
-  "source": "raspberry-pi-hmi",
+  "request_id": "ml-face-001",
   "device_id": "smart-fridge-pi-001",
-  "timezone": "Asia/Taipei"
+  "image": {"type": "local_path", "value": "/path/to/face.jpg"},
+  "expected_user_id": "roger"
 }
 ```
 
-Fields:
-
-- `request_id`: caller-generated id for tracing.
-- `source`: caller name, such as `raspberry-pi-hmi`, `lambda`, or `local-test`.
-- `device_id`: refrigerator device id.
-- `timezone`: timezone used for relative date parsing.
-
-## 2. Face Authentication
-
-### Request
+Success:
 
 ```json
 {
-  "request_id": "ml-req-20260603-000001",
-  "device_id": "smart-fridge-pi-001",
-  "image": {
-    "type": "local_path",
-    "value": "./fixtures/images/face_known_user.jpg"
-  },
-  "expected_user_id": null
-}
-```
-
-Supported image types:
-
-- `local_path`
-- `s3_uri`
-- `bytes_base64`
-
-### Success Response
-
-```json
-{
-  "request_id": "ml-req-20260603-000001",
+  "request_id": "ml-face-001",
   "status": "success",
   "result": {
     "authenticated": true,
-    "user_id": "cognito-user-sub-or-team-user-id",
-    "confidence": 98.42,
+    "user_id": "roger",
+    "confidence": 99.99,
     "matched_face_id": "rekognition-face-id",
-    "collection_id": "ml-smart-fridge-faces-dev"
+    "collection_id": "ml-smart-fridge-faces"
   }
 }
 ```
 
-### Unknown Face Response
+## Food Classification
+
+Function: `ml_detect_food(request)`
+
+The implementation uses Rekognition labels plus Bedrock vision classification against `ml/src/ml/config_data/food_catalog.json`.
+
+Request:
 
 ```json
 {
-  "request_id": "ml-req-20260603-000001",
-  "status": "success",
-  "result": {
-    "authenticated": false,
-    "user_id": null,
-    "confidence": 0,
-    "matched_face_id": null,
-    "collection_id": "ml-smart-fridge-faces-dev"
-  }
-}
-```
-
-## 3. Food Detection
-
-### Request
-
-```json
-{
-  "request_id": "ml-req-20260603-000002",
+  "request_id": "ml-food-001",
   "device_id": "smart-fridge-pi-001",
-  "image": {
-    "type": "local_path",
-    "value": "./fixtures/images/food_apple.jpg"
-  },
-  "min_confidence": 70
+  "image": {"type": "local_path", "value": "/path/to/food.jpg"}
 }
 ```
 
-### Success Response
+Success:
 
 ```json
 {
-  "request_id": "ml-req-20260603-000002",
+  "request_id": "ml-food-001",
   "status": "success",
   "result": {
-    "food_name": "apple",
-    "confidence": 94.12,
-    "model": "rekognition-detect-labels",
-    "candidates": [
-      {
-        "label": "apple",
-        "confidence": 94.12
-      },
-      {
-        "label": "fruit",
-        "confidence": 91.87
-      }
+    "food_id": "soy_milk",
+    "food_name": "soy_milk",
+    "display_name": "Soy milk",
+    "confidence": 0.92,
+    "matched_catalog_id": "soy_milk",
+    "model": "jp.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "reason": "Bedrock explanation.",
+    "rekognition_candidates": [
+      {"label": "beverage", "confidence": 89.27},
+      {"label": "milk", "confidence": 85.45}
     ]
   }
 }
 ```
 
-### Low Confidence Response
+## Expiration Duration
+
+Function: `ml_parse_expiration_date(request)`
+
+The implementation uses Transcribe for audio-to-text and Bedrock for transcript-to-duration JSON.
+
+Request:
 
 ```json
 {
-  "request_id": "ml-req-20260603-000002",
-  "status": "error",
-  "error": {
-    "code": "ML_LOW_CONFIDENCE",
-    "message": "No supported food label reached the configured confidence threshold.",
-    "details": {
-      "threshold": 70,
-      "best_candidate": {
-        "label": "object",
-        "confidence": 42.5
-      }
-    }
-  }
-}
-```
-
-## 4. Expiration Date Parsing
-
-### Request
-
-```json
-{
-  "request_id": "ml-req-20260603-000003",
+  "request_id": "ml-exp-001",
   "device_id": "smart-fridge-pi-001",
   "timezone": "Asia/Taipei",
-  "audio": {
-    "type": "local_path",
-    "value": "./fixtures/audio/expiration_next_friday.wav"
-  },
-  "captured_at": "2026-06-03T10:30:00+08:00"
+  "captured_at": "2026-06-03T10:30:00+08:00",
+  "audio": {"type": "local_path", "value": "/path/to/expiration.m4a"}
 }
 ```
 
-Supported audio types:
-
-- `local_path`
-- `s3_uri`
-- `bytes_base64`
-- `transcript_text` for local tests only
-
-### Success Response
+Success:
 
 ```json
 {
-  "request_id": "ml-req-20260603-000003",
+  "request_id": "ml-exp-001",
   "status": "success",
   "result": {
-    "expiration_date": "2026-06-05",
-    "transcript": "next Friday",
-    "confidence": null,
+    "expiration_date": "2026-08-03",
+    "expiration_duration": "P2M",
+    "expiration_duration_unit": "months",
+    "expiration_duration_amount": 2,
+    "transcript": "兩個月後",
+    "confidence": 0.95,
+    "reason": "Bedrock explanation.",
     "timezone": "Asia/Taipei"
   }
 }
 ```
 
-### Ambiguous Date Response
+## Combined Put
+
+Function: `ml_process_put_food(request)`
 
 ```json
 {
-  "request_id": "ml-req-20260603-000003",
-  "status": "error",
-  "error": {
-    "code": "ML_AMBIGUOUS_DATE",
-    "message": "The spoken expiration date could not be normalized into one date.",
-    "details": {
-      "transcript": "sometime next week"
-    }
-  }
-}
-```
-
-## 5. Combined Put Food ML Result
-
-This is optional. It is useful when HMI wants one ML response after both food image and audio are captured.
-
-### Request
-
-```json
-{
-  "request_id": "ml-req-20260603-000004",
+  "request_id": "ml-put-001",
   "device_id": "smart-fridge-pi-001",
-  "user_id": "cognito-user-sub-or-team-user-id",
-  "food_image": {
-    "type": "local_path",
-    "value": "./fixtures/images/food_apple.jpg"
-  },
-  "expiration_audio": {
-    "type": "local_path",
-    "value": "./fixtures/audio/expiration_next_friday.wav"
-  },
+  "user_id": "roger",
+  "food_image": {"type": "local_path", "value": "/path/to/food.jpg"},
+  "expiration_audio": {"type": "local_path", "value": "/path/to/expiration.m4a"},
   "captured_at": "2026-06-03T10:30:00+08:00",
   "timezone": "Asia/Taipei"
 }
 ```
 
-### Success Response
+Success:
 
 ```json
 {
-  "request_id": "ml-req-20260603-000004",
+  "request_id": "ml-put-001",
   "status": "success",
   "result": {
-    "user_id": "cognito-user-sub-or-team-user-id",
-    "food_name": "apple",
-    "food_confidence": 94.12,
-    "expiration_date": "2026-06-05",
-    "expiration_transcript": "next Friday"
+    "user_id": "roger",
+    "food_name": "soy_milk",
+    "food_confidence": 0.92,
+    "expiration_date": "2026-08-03",
+    "expiration_duration": "P2M",
+    "expiration_transcript": "兩個月後"
   }
 }
 ```
 
-Cloud team should write this result to DynamoDB. ML should not own inventory persistence.
+## Combined Retrieve
 
-## 6. Combined Retrieve Food ML Result
-
-ML identifies what was removed. Cloud decides whether the current user owns it.
-
-### Request
+Function: `ml_process_retrieve_food(request)`
 
 ```json
 {
-  "request_id": "ml-req-20260603-000005",
+  "request_id": "ml-ret-001",
   "device_id": "smart-fridge-pi-001",
-  "user_id": "cognito-user-sub-or-team-user-id",
-  "food_image": {
-    "type": "local_path",
-    "value": "./fixtures/images/removed_food_apple.jpg"
-  }
+  "user_id": "roger",
+  "food_image": {"type": "local_path", "value": "/path/to/removed_food.jpg"}
 }
 ```
 
-### Success Response
+Success:
 
 ```json
 {
-  "request_id": "ml-req-20260603-000005",
+  "request_id": "ml-ret-001",
   "status": "success",
   "result": {
-    "user_id": "cognito-user-sub-or-team-user-id",
-    "food_name": "apple",
-    "food_confidence": 92.8
+    "user_id": "roger",
+    "food_name": "soy_milk",
+    "food_confidence": 0.92
   }
 }
 ```
 
-## 7. Common Error Codes
-
-```text
-ML_INVALID_INPUT
-ML_FILE_NOT_FOUND
-ML_UNSUPPORTED_MEDIA_TYPE
-ML_AWS_PERMISSION_DENIED
-ML_AWS_NETWORK_ERROR
-ML_AWS_SERVICE_ERROR
-ML_LOW_CONFIDENCE
-ML_NO_FACE_DETECTED
-ML_MULTIPLE_FACES_DETECTED
-ML_UNKNOWN_FACE
-ML_NO_FOOD_DETECTED
-ML_TRANSCRIBE_FAILED
-ML_AMBIGUOUS_DATE
-ML_INTERNAL_ERROR
-```
-
-Common error payload:
+## Errors
 
 ```json
 {
-  "request_id": "ml-req-20260603-000099",
+  "request_id": "ml-req",
   "status": "error",
   "error": {
-    "code": "ML_INVALID_INPUT",
-    "message": "Human-readable error message.",
+    "code": "ML_LOW_CONFIDENCE",
+    "message": "Human-readable message.",
     "details": {}
   }
 }
 ```
+
+Common codes: `ML_INVALID_INPUT`, `ML_FILE_NOT_FOUND`, `ML_UNSUPPORTED_MEDIA_TYPE`, `ML_AWS_PERMISSION_DENIED`, `ML_AWS_SERVICE_ERROR`, `ML_LOW_CONFIDENCE`, `ML_NO_FOOD_DETECTED`, `ML_TRANSCRIBE_FAILED`, `ML_AMBIGUOUS_DATE`, `ML_INTERNAL_ERROR`.

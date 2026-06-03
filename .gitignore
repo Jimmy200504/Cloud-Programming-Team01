@@ -1,0 +1,29 @@
+/prompt.md
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local secrets and AWS credentials
+.env
+.env.*
+.aws/
+aws_credentials*
+
+# ML local captures and temporary AWS media
+ml/tmp/
+ml/captures/
+ml/tests/fixtures/private/
+ml/tests/fixtures/images/*
+ml/tests/fixtures/audio/*
+*.transcribe.json

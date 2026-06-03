@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smart-fridge-ml"
+version = "0.1.0"
+description = "ML integration package for the smart refrigerator project"
+requires-python = ">=3.11"
+dependencies = [
+    "boto3>=1.34",
+]
+
+[dependency-groups]
+dev = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
