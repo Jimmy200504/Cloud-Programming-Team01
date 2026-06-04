@@ -57,8 +57,9 @@ AUDIO_DIR = "recordings"        # 錄音輸出資料夾
 # ============================================================
 #  AWS IoT Core 設定
 # ============================================================
-# 你的 AWS IoT ATS Endpoint，可於 AWS IoT Console → 設定 取得
-AWS_ENDPOINT = "xxxxxxxxxxxxx-ats.iot.ap-northeast-1.amazonaws.com"
+# 你的 AWS IoT ATS Endpoint (帳號 491919374787 / ap-northeast-1)
+# 由 `aws iot describe-endpoint --endpoint-type iot:Data-ATS` 查得
+AWS_ENDPOINT = "a2ddn1ymw51sga-ats.iot.ap-northeast-1.amazonaws.com"
 
 # 憑證檔案路徑 (請將下載的憑證放到 certs/ 資料夾)
 AWS_CERT_PATH = "certs/certificate.pem.crt"     # 裝置憑證
@@ -66,13 +67,33 @@ AWS_PRIVATE_KEY_PATH = "certs/private.pem.key"  # 裝置私鑰
 AWS_ROOT_CA_PATH = "certs/AmazonRootCA1.pem"    # Amazon Root CA
 
 # MQTT 連線識別
-AWS_CLIENT_ID = "smart-fridge-pi"   # MQTT Client ID
-AWS_THING_NAME = "smart-fridge"     # IoT Thing 名稱 (用於 Device Shadow)
+# 注意:IoT 政策常會要求 Client ID 必須等於 Thing 名稱,故兩者先設一致。
+# 若 Member 3 的政策允許別的 Client ID，再調整 AWS_CLIENT_ID。
+AWS_CLIENT_ID = "smart-fridge-001"   # MQTT Client ID
+AWS_THING_NAME = "smart-fridge-001"  # IoT Thing 名稱 (用於 Device Shadow)
+DEVICE_ID = "smart-fridge-001"       # 裝置 ID (API 與 Shadow 共用,= Thing 名稱)
+IOT_POLICY_NAME = "smart-fridge-dev-device-policy"  # 憑證要掛的 IoT 政策(Member 3 提供)
 
-# MQTT Topic
-TOPIC_TELEMETRY = "smartfridge/telemetry"   # 上傳溫濕度資料的主題
+# ============================================================
+#  雲端 REST API (API Gateway) 設定
+# ============================================================
+# 業務事件走 HTTPS + JSON(base64 影像/音訊),不需 AWS 憑證。
+# 來源:aws-backend/docs/hardware-embedded-integration-guide.md
+API_BASE_URL = "https://v6ylyjtxga.execute-api.ap-northeast-1.amazonaws.com/dev"
+TIMEZONE = "Asia/Taipei"        # 送出 capturedAt 時用的時區
+API_TIMEOUT_SECONDS = 30        # API 呼叫逾時秒數
 
-# Device Shadow 中，代表「門鎖」的欄位名稱與「解鎖」指令值
-SHADOW_DOOR_KEY = "door"        # desired 狀態裡的鍵
-SHADOW_DOOR_UNLOCK = "unlock"   # 代表「請解鎖」的值
-SHADOW_DOOR_LOCK = "lock"       # 代表「請上鎖」的值
+# ============================================================
+#  Device Shadow 欄位 (依雲端整合契約)
+# ============================================================
+# 裝置狀態/硬體指令走 Shadow;影像/音訊/食物紀錄「不要」放進 Shadow。
+# 門鎖:lock 欄位,值為 locked / unlocked
+SHADOW_LOCK_KEY = "lock"
+SHADOW_LOCK_LOCKED = "locked"
+SHADOW_LOCK_UNLOCKED = "unlocked"
+# LED 警示:led 欄位,值為 off / alert
+SHADOW_LED_KEY = "led"
+SHADOW_LED_OFF = "off"
+SHADOW_LED_ALERT = "alert"
+# 收到 led=alert 後,LED 閃爍持續秒數,逾時自動關閉並回報 off
+LED_ALERT_SECONDS = 10

@@ -37,3 +37,6 @@ sounddevice
 
 # --- AWS IoT Core ---
 awsiotsdk
+
+# --- 雲端 REST API 呼叫 (API Gateway) ---
+requests
