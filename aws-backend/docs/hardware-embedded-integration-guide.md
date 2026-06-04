@@ -4,6 +4,41 @@ Last updated: 2026-06-04
 
 This document is for the Hardware & Embedded Engineering owner. It explains how the Raspberry Pi, microphone, camera, lock, and LED should connect to the current cloud backend.
 
+## After Pulling This Branch
+
+Hardware engineers can read this guide and call the current shared dev API endpoints immediately, but the Raspberry Pi cannot connect to AWS IoT Core until it has device credentials.
+
+API Gateway calls need:
+
+```text
+API base URL
+JSON payloads
+base64 encoded image/audio files
+```
+
+IoT Shadow MQTT calls need:
+
+```text
+AWS IoT endpoint
+device certificate
+private key
+Amazon root CA
+Thing attachment: smart-fridge-001
+Policy attachment: smart-fridge-dev-device-policy
+```
+
+If you are using a different AWS account, stage, or device id, confirm these values with the cloud owner before coding:
+
+```text
+API base URL
+AWS region
+DeviceId / IoT Thing name
+IoT policy name
+MQTT client id
+```
+
+For local hardware development before MQTT is ready, you can still test camera and microphone upload by calling API Gateway over HTTPS. LED/lock behavior should be mocked locally until the IoT certificate and Shadow subscription are configured.
+
 ## Cloud Values
 
 API base URL:

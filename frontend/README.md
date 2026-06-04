@@ -18,6 +18,42 @@ That page is only for API integration testing. Frontend developers can use it as
 - Viewing the signed-in user's fridge inventory
 - Testing whether a face matches the food owner
 
+## After Pulling This Branch
+
+Frontend developers can run the test page against the current shared dev backend without AWS CLI credentials:
+
+```bash
+git checkout feature/cloud-architecture
+cd frontend/test
+python3 -m http.server 5173
+```
+
+Open:
+
+```text
+http://localhost:5173
+```
+
+This works because the test app includes the current dev API Gateway URL and Cognito client id.
+
+If you need to point the local page at a different backend stack, create an ignored local override:
+
+```bash
+cp frontend/test/config.example.js frontend/test/config.js
+```
+
+Then update:
+
+```js
+window.SMART_FRIDGE_CONFIG = {
+  apiBaseUrl: "https://your-api.execute-api.ap-northeast-1.amazonaws.com/dev",
+  region: "ap-northeast-1",
+  userPoolClientId: "your-cognito-client-id"
+};
+```
+
+This only changes the local browser test page. It does not deploy backend resources or change Lambda environment variables.
+
 ## Run The Test Page
 
 From the repository root:

@@ -34,10 +34,41 @@ aws-backend/
 
 ## Deploy
 
+If you only need to read the code or call the existing shared dev backend, no backend deploy is required.
+
+If you need to deploy your own backend stack, first review `samconfig.toml`. The checked-in file is for the current dev/demo stack and contains account-specific values:
+
+```text
+stack_name
+s3_prefix
+region
+StageName
+DeviceId
+MockMode
+SesFromEmail
+LambdaExecutionRoleArn
+LambdaExecutionRoleName
+```
+
+Before deploying to another AWS account or another stack, change at least:
+
+```text
+stack_name
+s3_prefix
+SesFromEmail
+LambdaExecutionRoleArn
+LambdaExecutionRoleName
+```
+
+Use `MockMode=true` for safe frontend/backend development when you do not want real IoT Shadow writes, DynamoDB deletes during retrieve, or SES emails. Use `MockMode=false` only for cloud integration testing.
+
 Install and configure the AWS SAM CLI, then run:
 
 ```bash
 cd aws-backend
+cd lambdas/api-handler
+npm install
+cd ../..
 sam build
 sam deploy --guided
 ```
