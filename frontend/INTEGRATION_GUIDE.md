@@ -441,6 +441,52 @@ function getFoodDisplayName(food: FoodItem) {
 }
 ```
 
+## Flow 9: Put Food UX
+
+The real put-food user flow should be:
+
+1. User taps a put/open button.
+2. Camera captures the user's face.
+3. Frontend calls `POST /auth/face` with `action: "put"`.
+4. If face auth succeeds, frontend sends the hardware unlock signal.
+5. Camera captures the food image.
+6. User says or enters the expiration duration.
+7. Frontend calls `POST /foods/put`.
+8. Frontend refreshes `GET /foods/me`.
+
+The stored food record should include the recognized user's id, the food photo metadata, expiration date, and `putAt`/`createdAt`.
+
+## Flow 10: Retrieve Food UX
+
+The real retrieve-food user flow should be:
+
+1. User taps a retrieve/open button.
+2. Camera captures the user's face.
+3. Frontend calls `POST /auth/face` with `action: "retrieve"`.
+4. If face auth succeeds, frontend sends the hardware unlock signal.
+5. Camera captures the removed food image.
+6. Frontend calls `POST /foods/retrieve` with the recognized user's `userId`, recognized user's email, and food image.
+7. If `authorized: true`, show the returned notification message, for example `Ga took cola`.
+8. If `authorized: false`, trigger or display the reserved hardware alert actions returned by the backend.
+
+The backend response may include `hardwareActions` such as:
+
+```json
+[
+  {
+    "type": "hardware-buzzer",
+    "status": "reserved",
+    "message": "Ask external hardware to play an alert sound"
+  },
+  {
+    "type": "owner-email",
+    "status": "reserved",
+    "ownerEmail": "owner@example.com",
+    "message": "Notify the food owner by email"
+  }
+]
+```
+
 ## Owner Check
 
 `POST /test/owner-check` is an integration-test route, not the normal inventory UI.

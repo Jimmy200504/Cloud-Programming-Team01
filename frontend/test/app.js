@@ -16,7 +16,8 @@ const elements = {
   resendCode: document.querySelector("#resendCode"),
   loginForm: document.querySelector("#loginForm"),
   faceForm: document.querySelector("#faceForm"),
-  ownerCheckForm: document.querySelector("#ownerCheckForm"),
+  putFlowForm: document.querySelector("#putFlowForm"),
+  retrieveFlowForm: document.querySelector("#retrieveFlowForm"),
   signupEmail: document.querySelector("#signupEmail"),
   signupName: document.querySelector("#signupName"),
   signupPassword: document.querySelector("#signupPassword"),
@@ -24,14 +25,16 @@ const elements = {
   loginEmail: document.querySelector("#loginEmail"),
   loginPassword: document.querySelector("#loginPassword"),
   faceImage: document.querySelector("#faceImage"),
-  ownerFoodName: document.querySelector("#ownerFoodName"),
-  ownerFoodImage: document.querySelector("#ownerFoodImage"),
-  ownerEmail: document.querySelector("#ownerEmail"),
-  ownerUserId: document.querySelector("#ownerUserId"),
-  ownerExpirationDate: document.querySelector("#ownerExpirationDate"),
-  ownerExpirationTranscript: document.querySelector("#ownerExpirationTranscript"),
-  ownerExpirationAudio: document.querySelector("#ownerExpirationAudio"),
-  ownerFaceImage: document.querySelector("#ownerFaceImage"),
+  putFaceImage: document.querySelector("#putFaceImage"),
+  putFoodImage: document.querySelector("#putFoodImage"),
+  putFoodName: document.querySelector("#putFoodName"),
+  putExpirationDate: document.querySelector("#putExpirationDate"),
+  putExpirationTranscript: document.querySelector("#putExpirationTranscript"),
+  putExpirationAudio: document.querySelector("#putExpirationAudio"),
+  retrieveFaceImage: document.querySelector("#retrieveFaceImage"),
+  retrieveFoodImage: document.querySelector("#retrieveFoodImage"),
+  retrieveFoodId: document.querySelector("#retrieveFoodId"),
+  retrieveFoodName: document.querySelector("#retrieveFoodName"),
   previewImage: document.querySelector("#previewImage"),
   previewFrame: document.querySelector(".preview-frame"),
   output: document.querySelector("#output"),
@@ -41,12 +44,12 @@ const elements = {
   sessionStatus: document.querySelector("#sessionStatus"),
   accountState: document.querySelector("#accountState"),
   uploadState: document.querySelector("#uploadState"),
-  ownerCheckState: document.querySelector("#ownerCheckState")
+  putFlowState: document.querySelector("#putFlowState"),
+  retrieveFlowState: document.querySelector("#retrieveFlowState")
 };
 
 syncSessionUi();
-if (session.email) elements.ownerEmail.value = session.email;
-elements.ownerExpirationDate.value = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+elements.putExpirationDate.value = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
   .toISOString()
   .slice(0, 10);
 void loadInventory();
@@ -155,7 +158,6 @@ elements.loginForm.addEventListener("submit", async (event) => {
     localStorage.setItem("smartFridge.accessToken", session.accessToken);
     localStorage.setItem("smartFridge.email", session.email);
     syncSessionUi();
-    elements.ownerEmail.value = session.email;
     await loadInventory();
     writeOutput({
       success: true,
@@ -228,79 +230,160 @@ elements.faceForm.addEventListener("submit", async (event) => {
   }
 });
 
-elements.ownerCheckForm.addEventListener("submit", async (event) => {
+elements.putFlowForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const file = elements.ownerFaceImage.files[0];
-  const ownerEmail = elements.ownerEmail.value.trim();
-  const ownerUserId = elements.ownerUserId.value.trim();
+  const faceFile = elements.putFaceImage.files[0];
 
-  if (!ownerEmail && !ownerUserId) {
-    writeOutput({
-      success: false,
-      errorCode: "NO_OWNER",
-      message: "Enter owner email or owner user id"
-    });
-    return;
-  }
-
-  if (!file) {
+  if (!faceFile) {
     writeOutput({
       success: false,
       errorCode: "NO_IMAGE",
-      message: "Select a JPEG or PNG image"
+      message: "Select a face image"
     });
     return;
   }
 
-  setBusy(elements.ownerCheckForm, true);
-  elements.ownerCheckState.textContent = "Creating";
+  setBusy(elements.putFlowForm, true);
+  elements.putFlowState.textContent = "Face auth";
   try {
-    const foodFile = elements.ownerFoodImage.files[0];
-    const userId = currentUserId();
+    const faceAuth = await authenticateFlowFace({
+      action: "put",
+      file: faceFile
+    });
+    if (!faceAuth.authenticated) {
+      elements.putFlowState.textContent = "Denied";
+      writeOutput({
+        workflow: "put-food",
+        faceAuth,
+        hardwareUnlock: {
+          requested: false,
+          reason: "Face was not recognized"
+        }
+      });
+      return;
+    }
+
+    elements.putFlowState.textContent = "Unlock";
+    const hardwareUnlock = await signalFridgeUnlock("put");
+    const foodFile = elements.putFoodImage.files[0];
+    const recognizedUser = faceAuth.user || {};
+    const now = new Date().toISOString();
     const putFoodBody = {
-      foodName: elements.ownerFoodName.value.trim(),
-      ownerEmail,
-      userId,
-      ownerUserId,
-      expirationDate: elements.ownerExpirationDate.value,
-      recordType: "owner-check-test"
+      foodName: elements.putFoodName.value.trim(),
+      ownerEmail: recognizedUser.email || session.email,
+      userId: recognizedUser.userId || currentUserId(),
+      ownerUserId: recognizedUser.userId || currentUserId(),
+      expirationDate: elements.putExpirationDate.value,
+      capturedAt: now,
+      putAt: now,
+      deviceId: "smart-fridge-001",
+      recordType: "put-flow-test"
     };
     if (foodFile) {
       putFoodBody.foodImageContentType = foodFile.type || "image/jpeg";
       putFoodBody.foodImageBase64 = await fileToBase64(foodFile);
     }
-    const expirationAudioFile = elements.ownerExpirationAudio.files[0];
+    const expirationAudioFile = elements.putExpirationAudio.files[0];
     if (expirationAudioFile) {
       putFoodBody.audioContentType = audioContentType(expirationAudioFile);
       putFoodBody.expirationAudioBase64 = await fileToBase64(expirationAudioFile);
-      putFoodBody.capturedAt = new Date().toISOString();
       putFoodBody.timezone = "Asia/Taipei";
-    } else if (elements.ownerExpirationTranscript.value.trim()) {
-      putFoodBody.expirationTranscript = elements.ownerExpirationTranscript.value.trim();
-      putFoodBody.capturedAt = new Date().toISOString();
+    } else if (elements.putExpirationTranscript.value.trim()) {
+      putFoodBody.expirationTranscript = elements.putExpirationTranscript.value.trim();
       putFoodBody.timezone = "Asia/Taipei";
     }
 
+    elements.putFlowState.textContent = "Storing";
     const createdFood = await postJson(`${CONFIG.apiBaseUrl}/foods/put`, putFoodBody);
-
-    elements.ownerCheckState.textContent = "Checking";
-    const faceImageBase64 = await fileToBase64(file);
-    const response = await postJsonAllowFalse(`${CONFIG.apiBaseUrl}/test/owner-check`, {
-      foodId: createdFood.food.foodId,
-      imageContentType: file.type || "image/jpeg",
-      faceImageBase64
-    });
-    elements.ownerCheckState.textContent = response.authorized ? "Success" : "Fail";
+    elements.putFlowState.textContent = "Stored";
     writeOutput({
-      createdFood: createdFood.food,
-      ownerCheck: response
+      workflow: "put-food",
+      faceAuth,
+      hardwareUnlock,
+      storedFood: createdFood.food
     });
     await loadInventory();
   } catch (error) {
-    elements.ownerCheckState.textContent = "Failed";
+    elements.putFlowState.textContent = "Failed";
     writeOutput(errorToObject(error));
   } finally {
-    setBusy(elements.ownerCheckForm, false);
+    setBusy(elements.putFlowForm, false);
+  }
+});
+
+elements.retrieveFlowForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const faceFile = elements.retrieveFaceImage.files[0];
+  const foodFile = elements.retrieveFoodImage.files[0];
+
+  if (!faceFile || !foodFile) {
+    writeOutput({
+      success: false,
+      errorCode: "MISSING_IMAGE",
+      message: "Select both a face image and a food image"
+    });
+    return;
+  }
+
+  setBusy(elements.retrieveFlowForm, true);
+  elements.retrieveFlowState.textContent = "Face auth";
+  try {
+    const faceAuth = await authenticateFlowFace({
+      action: "retrieve",
+      file: faceFile
+    });
+    if (!faceAuth.authenticated) {
+      elements.retrieveFlowState.textContent = "Denied";
+      writeOutput({
+        workflow: "retrieve-food",
+        faceAuth,
+        hardwareUnlock: {
+          requested: false,
+          reason: "Face was not recognized"
+        }
+      });
+      return;
+    }
+
+    elements.retrieveFlowState.textContent = "Unlock";
+    const hardwareUnlock = await signalFridgeUnlock("retrieve");
+    const recognizedUser = faceAuth.user || {};
+    const foodImageBase64 = await fileToBase64(foodFile);
+
+    elements.retrieveFlowState.textContent = "Checking";
+    const response = await postJsonAllowFalse(`${CONFIG.apiBaseUrl}/foods/retrieve`, {
+      foodId: elements.retrieveFoodId.value.trim(),
+      foodName: elements.retrieveFoodName.value.trim(),
+      userId: recognizedUser.userId || currentUserId(),
+      ownerEmail: recognizedUser.email || session.email,
+      actorDisplayName: recognizedUser.displayName || recognizedUser.email || "Recognized user",
+      foodImageContentType: foodFile.type || "image/jpeg",
+      foodImageBase64,
+      deviceId: "smart-fridge-001"
+    });
+
+    elements.retrieveFlowState.textContent = response.authorized ? "Retrieved" : "Alert";
+    writeOutput({
+      workflow: "retrieve-food",
+      faceAuth,
+      hardwareUnlock,
+      retrieveResult: response,
+      hardwareAlert: response.authorized
+        ? {
+            requested: false,
+            reason: "Recognized user owns the food"
+          }
+        : {
+            requested: true,
+            actions: response.hardwareActions || ["buzzer", "owner-email"]
+          }
+    });
+    await loadInventory();
+  } catch (error) {
+    elements.retrieveFlowState.textContent = "Failed";
+    writeOutput(errorToObject(error));
+  } finally {
+    setBusy(elements.retrieveFlowForm, false);
   }
 });
 
@@ -369,6 +452,56 @@ async function getJson(url, headers = {}) {
     throw error;
   }
   return payload;
+}
+
+async function authenticateFlowFace({ action, file }) {
+  const faceImageBase64 = await fileToBase64(file);
+  return postJsonAllowFalse(`${CONFIG.apiBaseUrl}/auth/face`, {
+    action,
+    deviceId: "smart-fridge-001",
+    imageContentType: file.type || "image/jpeg",
+    faceImageBase64
+  });
+}
+
+async function signalFridgeUnlock(reason) {
+  const hardwareSignal = {
+    requested: true,
+    type: "unlock-fridge-lock",
+    deviceId: "smart-fridge-001",
+    reason
+  };
+
+  if (!session.idToken) {
+    return {
+      ...hardwareSignal,
+      sent: false,
+      message: "No signed-in session token; hardware unlock interface is reserved but was not called"
+    };
+  }
+
+  try {
+    const response = await postJson(
+      `${CONFIG.apiBaseUrl}/device/smart-fridge-001/lock`,
+      {
+        desiredLock: "unlocked"
+      },
+      {
+        Authorization: `Bearer ${session.idToken}`
+      }
+    );
+    return {
+      ...hardwareSignal,
+      sent: true,
+      response
+    };
+  } catch (error) {
+    return {
+      ...hardwareSignal,
+      sent: false,
+      error: errorToObject(error)
+    };
+  }
 }
 
 async function cognito(target, body) {

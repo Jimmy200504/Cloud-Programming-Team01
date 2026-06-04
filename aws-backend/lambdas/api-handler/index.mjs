@@ -310,6 +310,7 @@ async function putFood(body) {
     expirationDate: expirationParsing?.expiration?.expirationDate || body.expirationDate || "2026-06-10",
     deviceId: body.deviceId || DEVICE_ID,
     createdAt: now,
+    putAt: body.putAt || now,
     updatedAt: now,
     ...(foodImage ? { foodImage } : {}),
     ...(foodClassification ? { foodClassification } : {}),
@@ -329,6 +330,7 @@ async function putFood(body) {
       foodName: food.foodName,
       expirationDate: food.expirationDate,
       createdAt: food.createdAt,
+      putAt: food.putAt,
       ...(foodImage ? { foodImage } : {}),
       ...(foodClassification ? { foodClassification } : {}),
       ...(expirationParsing ? { expirationParsing: expirationParsing.expiration } : {})
@@ -396,18 +398,29 @@ async function retrieveFood(body) {
     fallbackFoodName: body.foodName
   });
   if (foodClassification.success === false) return foodClassification;
-  const requestedFood = body.foodId
+  let requestedFood = body.foodId
     ? await getFoodItem(body.foodId)
     : await findFoodByName({
         foodName: foodClassification.foodName,
         ownerUserId: body.userId || body.ownerUserId
       });
+  if (!requestedFood && !body.foodId) {
+    requestedFood = await findFoodByName({
+      foodName: foodClassification.foodName
+    });
+  }
 
   if (body.userId === "mock-not-owner") {
+    const food = requestedFood || {
+      foodId: "food-milk-001",
+      foodName: foodClassification.foodName,
+      ownerUserId: mockUser.userId,
+      ownerEmail: mockUser.email
+    };
     if (!MOCK_MODE) {
       await sendOwnerAlert({
-        ownerEmail: requestedFood?.ownerEmail || mockUser.email,
-        foodName: requestedFood?.foodName || foodClassification.foodName,
+        ownerEmail: food.ownerEmail,
+        foodName: food.foodName,
         actorUserId: body.userId
       });
       await updateThingShadow(DEVICE_ID, { desired: { led: "alert" } });
@@ -416,18 +429,14 @@ async function retrieveFood(body) {
     return {
       success: false,
       authorized: false,
-      food: requestedFood || {
-        foodId: "food-milk-001",
-        foodName: foodClassification.foodName,
-        ownerUserId: mockUser.userId,
-        ownerEmail: mockUser.email
-      },
+      food,
       foodClassification,
+      hardwareActions: ownerViolationActions(food),
       message: "This food belongs to another user"
     };
   }
 
-  if (!requestedFood && !MOCK_MODE) {
+  if (!requestedFood && FOOD_TABLE_NAME) {
     return {
       success: false,
       authorized: false,
@@ -458,6 +467,7 @@ async function retrieveFood(body) {
       authorized: false,
       food: requestedFood,
       foodClassification,
+      hardwareActions: ownerViolationActions(requestedFood),
       message: "This food belongs to another user"
     };
   }
@@ -467,13 +477,44 @@ async function retrieveFood(body) {
     await deleteFoodItem(deletedFoodId);
   }
 
+  const actorName = body.actorDisplayName || body.actorName || body.ownerEmail || body.userId || "Recognized user";
+  const retrievedFoodName = requestedFood?.foodName || foodClassification.displayName || foodClassification.foodName;
   return {
     success: true,
     authorized: true,
     deletedFoodId,
+    food: requestedFood
+      ? {
+          foodId: requestedFood.foodId,
+          foodName: requestedFood.foodName,
+          ownerUserId: requestedFood.ownerUserId,
+          ownerEmail: requestedFood.ownerEmail,
+          expirationDate: requestedFood.expirationDate
+        }
+      : null,
     foodClassification,
-    message: "Food retrieved"
+    notification: {
+      type: "food-retrieved",
+      message: `${actorName} took ${retrievedFoodName}`
+    },
+    message: `${actorName} took ${retrievedFoodName}`
   };
+}
+
+function ownerViolationActions(food) {
+  return [
+    {
+      type: "hardware-buzzer",
+      status: MOCK_MODE ? "reserved" : "requested",
+      message: "Ask external hardware to play an alert sound"
+    },
+    {
+      type: "owner-email",
+      status: SES_FROM_EMAIL && !MOCK_MODE ? "requested" : "reserved",
+      ownerEmail: food?.ownerEmail,
+      message: "Notify the food owner by email"
+    }
+  ];
 }
 
 async function testOwnerCheck(body) {

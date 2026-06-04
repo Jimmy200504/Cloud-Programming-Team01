@@ -24,8 +24,17 @@ http://localhost:5173
 - Cognito `ResendConfirmationCode`
 - Cognito `InitiateAuth`
 - `POST /users/me/face`
-- `POST /foods/put`
-- `POST /test/owner-check`
+- Put food flow:
+  - `POST /auth/face`
+  - reserved hardware unlock signal through `POST /device/smart-fridge-001/lock`
+  - `POST /foods/put`
+- Retrieve food flow:
+  - `POST /auth/face`
+  - reserved hardware unlock signal through `POST /device/smart-fridge-001/lock`
+  - `POST /foods/retrieve`
+  - reserved hardware buzzer and owner email actions when ownership check fails
+
+`POST /test/owner-check` still exists as a lower-level backend test route, but this page now separates the user-facing put and retrieve flows.
 
 For the official frontend API contract, read:
 

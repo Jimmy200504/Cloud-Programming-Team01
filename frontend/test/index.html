@@ -106,44 +106,63 @@
 
           <section class="panel wide">
             <div class="panel-heading">
-              <h2>Owner Check</h2>
-              <span id="ownerCheckState">Test</span>
+              <h2>Put Food Flow</h2>
+              <span id="putFlowState">Ready</span>
             </div>
 
-            <form id="ownerCheckForm" class="form-stack owner-grid">
+            <form id="putFlowForm" class="form-stack flow-grid">
               <label>
-                Food name
-                <input id="ownerFoodName" type="text" value="milk" />
+                Face image
+                <input id="putFaceImage" type="file" accept="image/jpeg,image/jpg,image/png" required />
               </label>
               <label>
                 Food image
-                <input id="ownerFoodImage" type="file" accept="image/jpeg,image/jpg,image/png" />
+                <input id="putFoodImage" type="file" accept="image/jpeg,image/jpg,image/png" />
               </label>
               <label>
-                Owner email
-                <input id="ownerEmail" type="email" placeholder="owner@example.com" />
-              </label>
-              <label>
-                Owner user id
-                <input id="ownerUserId" type="text" placeholder="optional Cognito sub" />
+                Food name
+                <input id="putFoodName" type="text" value="milk" />
               </label>
               <label>
                 Expiration date
-                <input id="ownerExpirationDate" type="date" required />
+                <input id="putExpirationDate" type="date" required />
               </label>
               <label>
                 Expiration transcript
-                <input id="ownerExpirationTranscript" type="text" placeholder="two months later" />
+                <input id="putExpirationTranscript" type="text" placeholder="兩個月後" />
               </label>
               <label>
                 Expiration audio
-                <input id="ownerExpirationAudio" type="file" accept=".wav,.mp3,.mp4,.m4a,.flac,.ogg,.amr,.webm,audio/wav,audio/mpeg,audio/mp4,audio/m4a,audio/x-m4a,audio/flac,audio/ogg,audio/amr,audio/webm" />
+                <input id="putExpirationAudio" type="file" accept=".wav,.mp3,.mp4,.m4a,.flac,.ogg,.amr,.webm,audio/wav,audio/mpeg,audio/mp4,audio/m4a,audio/x-m4a,audio/flac,audio/ogg,audio/amr,audio/webm" />
               </label>
-              <label class="wide-field">
+              <button type="submit">Run put flow</button>
+            </form>
+          </section>
+
+          <section class="panel wide">
+            <div class="panel-heading">
+              <h2>Retrieve Food Flow</h2>
+              <span id="retrieveFlowState">Ready</span>
+            </div>
+
+            <form id="retrieveFlowForm" class="form-stack flow-grid">
+              <label>
                 Face image
-                <input id="ownerFaceImage" type="file" accept="image/jpeg,image/jpg,image/png" required />
+                <input id="retrieveFaceImage" type="file" accept="image/jpeg,image/jpg,image/png" required />
               </label>
-              <button type="submit">Check owner</button>
+              <label>
+                Food image
+                <input id="retrieveFoodImage" type="file" accept="image/jpeg,image/jpg,image/png" required />
+              </label>
+              <label>
+                Food id
+                <input id="retrieveFoodId" type="text" placeholder="optional exact food id" />
+              </label>
+              <label>
+                Food name fallback
+                <input id="retrieveFoodName" type="text" placeholder="optional fallback, e.g. milk" />
+              </label>
+              <button type="submit">Run retrieve flow</button>
             </form>
           </section>
         </div>
