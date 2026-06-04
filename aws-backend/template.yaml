@@ -28,9 +28,59 @@ Parameters:
     Type: String
     Default: SmartFridgeLambdaExecutionRole
     Description: Existing IAM role name used to attach IoT Device Shadow and SES permissions.
+  RekognitionCollectionId:
+    Type: String
+    Default: ml-smart-fridge-faces
+  FaceMatchThreshold:
+    Type: String
+    Default: "85"
+  FoodClassificationEnabled:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+  FoodClassificationModelId:
+    Type: String
+    Default: jp.anthropic.claude-haiku-4-5-20251001-v1:0
+  FoodClassificationMinConfidence:
+    Type: String
+    Default: "0.55"
+  RekognitionLabelMinConfidence:
+    Type: String
+    Default: "50"
+  MlS3BucketName:
+    Type: String
+    Default: ""
+    Description: Optional existing bucket for Transcribe audio and transcript artifacts.
+  MlTimezone:
+    Type: String
+    Default: Asia/Taipei
+  MlTranscribeLanguageCode:
+    Type: String
+    Default: zh-TW
+  MlTranscribeIdentifyLanguage:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+  MlTranscribeLanguageOptions:
+    Type: String
+    Default: zh-TW,en-US
+  MlTranscribePollSeconds:
+    Type: String
+    Default: "2"
+  MlTranscribeTimeoutSeconds:
+    Type: String
+    Default: "180"
+  MlBedrockDurationMinConfidence:
+    Type: String
+    Default: "0.7"
 
 Conditions:
   HasSesFromEmail: !Not [!Equals [!Ref SesFromEmail, ""]]
+  HasMlS3BucketName: !Not [!Equals [!Ref MlS3BucketName, ""]]
 
 Globals:
   Function:
@@ -48,20 +98,23 @@ Globals:
         FACE_IMAGE_BUCKET_NAME: !Ref FaceImageBucket
         FOOD_IMAGE_BUCKET_NAME: !Ref FoodImageBucket
         USER_POOL_CLIENT_ID: !Ref UserPoolClient
-        REKOGNITION_COLLECTION_ID: ml-smart-fridge-faces
-        FACE_MATCH_THRESHOLD: "85"
-        FOOD_CLASSIFICATION_ENABLED: "true"
-        FOOD_CLASSIFICATION_MODEL_ID: jp.anthropic.claude-haiku-4-5-20251001-v1:0
-        FOOD_CLASSIFICATION_MIN_CONFIDENCE: "0.55"
-        REKOGNITION_LABEL_MIN_CONFIDENCE: "50"
-        ML_S3_BUCKET: !Sub ml-smart-fridge-media-${AWS::AccountId}-${AWS::Region}-an
-        ML_TIMEZONE: Asia/Taipei
-        ML_TRANSCRIBE_LANGUAGE_CODE: zh-TW
-        ML_TRANSCRIBE_IDENTIFY_LANGUAGE: "true"
-        ML_TRANSCRIBE_LANGUAGE_OPTIONS: zh-TW,en-US
-        ML_TRANSCRIBE_POLL_SECONDS: "2"
-        ML_TRANSCRIBE_TIMEOUT_SECONDS: "180"
-        ML_BEDROCK_DURATION_MIN_CONFIDENCE: "0.7"
+        REKOGNITION_COLLECTION_ID: !Ref RekognitionCollectionId
+        FACE_MATCH_THRESHOLD: !Ref FaceMatchThreshold
+        FOOD_CLASSIFICATION_ENABLED: !Ref FoodClassificationEnabled
+        FOOD_CLASSIFICATION_MODEL_ID: !Ref FoodClassificationModelId
+        FOOD_CLASSIFICATION_MIN_CONFIDENCE: !Ref FoodClassificationMinConfidence
+        REKOGNITION_LABEL_MIN_CONFIDENCE: !Ref RekognitionLabelMinConfidence
+        ML_S3_BUCKET: !If
+          - HasMlS3BucketName
+          - !Ref MlS3BucketName
+          - !Sub ml-smart-fridge-media-${AWS::AccountId}-${AWS::Region}-an
+        ML_TIMEZONE: !Ref MlTimezone
+        ML_TRANSCRIBE_LANGUAGE_CODE: !Ref MlTranscribeLanguageCode
+        ML_TRANSCRIBE_IDENTIFY_LANGUAGE: !Ref MlTranscribeIdentifyLanguage
+        ML_TRANSCRIBE_LANGUAGE_OPTIONS: !Ref MlTranscribeLanguageOptions
+        ML_TRANSCRIBE_POLL_SECONDS: !Ref MlTranscribePollSeconds
+        ML_TRANSCRIBE_TIMEOUT_SECONDS: !Ref MlTranscribeTimeoutSeconds
+        ML_BEDROCK_DURATION_MIN_CONFIDENCE: !Ref MlBedrockDurationMinConfidence
         SES_FROM_EMAIL: !Ref SesFromEmail
         AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1"
 

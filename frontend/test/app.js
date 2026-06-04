@@ -1,7 +1,8 @@
 const CONFIG = {
   apiBaseUrl: "https://v6ylyjtxga.execute-api.ap-northeast-1.amazonaws.com/dev",
   region: "ap-northeast-1",
-  userPoolClientId: "58u2jdcqh3l2r7or7uctogai9n"
+  userPoolClientId: "58u2jdcqh3l2r7or7uctogai9n",
+  ...(window.SMART_FRIDGE_CONFIG || {})
 };
 
 let session = {

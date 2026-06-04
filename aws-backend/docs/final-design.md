@@ -309,21 +309,39 @@ These can be changed in `aws-backend/template.yaml` or deployment parameters:
 ```text
 StageName
 DeviceId
+MockMode
 SesFromEmail
 LambdaExecutionRoleArn
 LambdaExecutionRoleName
-FACE_MATCH_THRESHOLD
-REKOGNITION_COLLECTION_ID
-MockMode
+RekognitionCollectionId
+FaceMatchThreshold
+FoodClassificationEnabled
+FoodClassificationModelId
+FoodClassificationMinConfidence
+RekognitionLabelMinConfidence
+MlS3BucketName
+MlTimezone
+MlTranscribeLanguageCode
+MlTranscribeIdentifyLanguage
+MlTranscribeLanguageOptions
+MlTranscribePollSeconds
+MlTranscribeTimeoutSeconds
+MlBedrockDurationMinConfidence
 ```
 
 Recommended changes:
 
-- Increase `FACE_MATCH_THRESHOLD` to `90` or `95` for a stricter demo.
+- Use `MockMode=true` for frontend-only development when real IoT Shadow writes, SES emails, and retrieve deletes are not needed.
+- Use `MockMode=false` for cloud integration tests only after Lambda has IoT, SES, and DynamoDB permissions.
+- Increase `FaceMatchThreshold` to `90` or `95` for a stricter demo.
 - Change `DeviceId` if the Raspberry Pi team uses a different IoT Thing name.
-- Set `SesFromEmail` only after the email address is verified in SES.
-- Keep `MockMode=true` for normal frontend demos; use `MockMode=false` for cloud integration tests.
-- Keep `REKOGNITION_COLLECTION_ID` aligned with the Rekognition team's collection.
+- Set `SesFromEmail` only after the email address is verified in SES. If the SES account is still in sandbox, recipient owner emails must also be verified.
+- Keep `RekognitionCollectionId` aligned with the Rekognition team's collection.
+- Set `FoodClassificationEnabled=false` only when Bedrock food classification should be skipped for development.
+- Change `FoodClassificationModelId` only to a Bedrock model or inference profile that the Lambda role can invoke.
+- Set `MlS3BucketName` only to an existing bucket that Lambda can read and write.
+- Keep `MlTimezone` aligned with the expected user timezone for relative expiration date parsing.
+- Keep `MlTranscribeTimeoutSeconds` within the Lambda timeout budget.
 
 Riskier changes:
 

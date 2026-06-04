@@ -39,6 +39,8 @@ If serving from `frontend/` instead, open:
 http://localhost:5173/test/
 ```
 
+For 12-factor-style local configuration, the test page can load an ignored `frontend/test/config.js` file. Copy `frontend/test/config.example.js` to `frontend/test/config.js` only when you need to point the local page at another API Gateway stage or Cognito client. This affects the local browser page only; backend runtime settings are controlled by SAM parameters.
+
 ## API Contract
 
 Read this file before implementing the real frontend:

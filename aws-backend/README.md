@@ -28,6 +28,7 @@ aws-backend/
 
 - `docs/final-design.md`: current deployed design, completed scope, data flow, and configurable items.
 - `docs/frontend-api-contract.md`: API contract and Cognito calls for frontend integration.
+- `docs/hardware-embedded-integration-guide.md`: microphone, camera, IoT Shadow, LED, and lock integration notes for hardware.
 - `docs/rekognition-integration-guide.md`: notes for the Rekognition integration owner.
 - `docs/interface-contract.md`: original broader MVP interface contract.
 
@@ -52,6 +53,72 @@ The `SesFromEmail` parameter must be a verified SES sender address if real email
 The Lambda function uses an existing execution role through the `LambdaExecutionRoleArn` parameter. The deploying AWS user needs `iam:PassRole` for that role.
 Set `LambdaExecutionRoleName` to the role name portion of that ARN so CloudFormation can attach the IoT Device Shadow and SES permissions.
 Set `MockMode=false` only when you want real DynamoDB delete, IoT Device Shadow, and SES calls.
+
+## 12-Factor Configuration
+
+Runtime configuration should be changed through SAM parameters or deployment parameter overrides, not by editing Lambda code. This keeps build, release, and runtime configuration separate.
+
+Common parameter overrides:
+
+```text
+StageName
+DeviceId
+MockMode
+SesFromEmail
+LambdaExecutionRoleArn
+LambdaExecutionRoleName
+RekognitionCollectionId
+FaceMatchThreshold
+FoodClassificationEnabled
+FoodClassificationModelId
+FoodClassificationMinConfidence
+RekognitionLabelMinConfidence
+MlS3BucketName
+MlTimezone
+MlTranscribeLanguageCode
+MlTranscribeIdentifyLanguage
+MlTranscribeLanguageOptions
+MlTranscribePollSeconds
+MlTranscribeTimeoutSeconds
+MlBedrockDurationMinConfidence
+```
+
+Recommended local/frontend-development setting:
+
+```text
+MockMode=true
+SesFromEmail=""
+FoodClassificationEnabled=true
+```
+
+Use this when you want to avoid real IoT Shadow writes, DynamoDB delete during retrieve, and SES emails.
+
+Recommended cloud-integration setting:
+
+```text
+MockMode=false
+SesFromEmail=<verified SES sender email>
+```
+
+Use this only after the Lambda role has IoT/SES/DynamoDB permissions and the SES sender identity is verified. If the AWS account is still in SES sandbox, recipient owner emails must also be verified.
+
+Parameter notes:
+
+- `StageName` changes API Gateway stage names and resource names. Changing it creates or points to different stage-specific resources.
+- `DeviceId` must match the IoT Thing name and the Raspberry Pi MQTT client id used by the device policy.
+- `MockMode=false` is required for real IoT Shadow reads/writes, real retrieve deletes, and real SES owner email attempts.
+- `SesFromEmail` only sends real email when it is non-empty, verified in SES, and `MockMode=false`.
+- `RekognitionCollectionId` must match an existing Rekognition collection that Lambda can access.
+- `FaceMatchThreshold` can be increased for stricter face matching. Higher values reduce false positives but may reject valid users.
+- `FoodClassificationEnabled=false` skips Bedrock food classification and uses fallback/mock classification logic.
+- `FoodClassificationModelId` must match a Bedrock model or inference profile that the Lambda role can invoke. Inference profiles may also require permission for routed foundation model ARNs.
+- `MlS3BucketName` can override the default `ml-smart-fridge-media-${AccountId}-${Region}-an` bucket. The bucket must exist, and Lambda must have `s3:PutObject` and `s3:GetObject` for it.
+- `MlTimezone` controls how relative expiration durations become calendar dates.
+- `MlTranscribeLanguageCode`, `MlTranscribeIdentifyLanguage`, and `MlTranscribeLanguageOptions` must stay compatible with Amazon Transcribe.
+- `MlTranscribeTimeoutSeconds` must be lower than or equal to the Lambda timeout if audio parsing happens inside the same Lambda invocation.
+- `MlBedrockDurationMinConfidence` controls how strict expiration duration parsing is.
+
+Avoid long-term manual changes through `aws lambda update-function-configuration`. If you must use CLI for a quick test, copy the final setting back into `samconfig.toml` or deployment parameters so the next `sam deploy` is reproducible.
 
 The Lambda execution role needs these permissions for the current backend:
 

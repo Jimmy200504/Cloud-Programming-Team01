@@ -17,6 +17,28 @@ Open:
 http://localhost:5173
 ```
 
+Optional local config override:
+
+```bash
+cp config.example.js config.js
+```
+
+Then edit `config.js` for a different API Gateway stage or Cognito client. `config.js` is ignored by git.
+
+`config.js` is useful when testing another deployed stack or stage. It is loaded before `app.js` and can override:
+
+```js
+window.SMART_FRIDGE_CONFIG = {
+  apiBaseUrl: "https://example.execute-api.ap-northeast-1.amazonaws.com/dev",
+  region: "ap-northeast-1",
+  userPoolClientId: "replace-with-cognito-client-id"
+};
+```
+
+The override only affects the local browser test page. It does not change deployed AWS resources, Lambda environment variables, or SAM parameters.
+
+For normal development against the current shared dev backend, do not create `config.js`; the default values in `app.js` are enough. After editing `config.js`, hard refresh the page so the browser reloads the script.
+
 ## Covered Flows
 
 - `POST /auth/signup`
