@@ -1,0 +1,39 @@
+# ============================================================
+#  Raspberry Pi 智慧冰箱 — 硬體端相依套件 (Bookworm / Pi)
+# ============================================================
+# 注意:以下套件僅在「實機模式」(config.MOCK_MODE = False) 才需要。
+#       一般電腦跑模擬模式時不必安裝即可執行。
+#
+# ⚠️ 在 Raspberry Pi OS Bookworm 上，相機相關套件「不要用 pip 裝」，
+#    必須用 apt 安裝系統版，原因是 CSI 相機的 libcamera/picamera2 是
+#    針對「系統 numpy」編譯的，若 pip 另外裝了不同版 numpy 會 ABI 衝突。
+#
+#    建立 venv 時務必加 --system-site-packages，才能看到下列 apt 套件:
+#        python3 -m venv --system-site-packages venv
+#
+# ------------------------------------------------------------
+#  [A] 用 apt 安裝 (系統層，相機 + numpy 必須共用同一版)
+# ------------------------------------------------------------
+#    sudo apt install -y python3-picamera2 python3-opencv python3-numpy
+#      python3-picamera2  → CSI 食物相機 (Pi Camera v2.1 / IMX219)
+#      python3-opencv     → USB 人臉相機 (cv2)
+#      python3-numpy      → 與上兩者共用，勿再用 pip 裝別版
+#
+# ------------------------------------------------------------
+#  [B] 用 pip 安裝到 venv (純 Python / 不挑 numpy 版本，安全)
+# ------------------------------------------------------------
+
+# --- GPIO 控制 ---
+gpiozero
+# gpiozero 需要底層 pin factory，擇一:
+#   lgpio       # Pi 5 / 新版建議
+#   RPi.GPIO    # Pi 4 以前
+
+# --- DHT22 溫濕度感測器 ---
+adafruit-circuitpython-dht
+
+# --- 麥克風錄音 (sounddevice 會用到系統 numpy) ---
+sounddevice
+
+# --- AWS IoT Core ---
+awsiotsdk
