@@ -265,8 +265,8 @@ alert
 
 - Face images are sent as base64 in JSON for MVP simplicity.
 - Owner check is currently a test API, not the final refrigerator retrieval flow.
-- Food recognition from a food image is not implemented by this backend.
-- Expiration extraction from audio is not implemented by this backend.
+- Food recognition from a food image is implemented for the MVP food catalog through Rekognition labels plus Bedrock image classification.
+- Expiration extraction from audio is implemented through S3, Transcribe, Bedrock duration parsing, and timezone-aware date math.
 - SES notification logic exists as a backend hook, but real sending requires a verified `SesFromEmail`.
 - Cognito signup is handled by backend, but confirmation and login are called directly from frontend to Cognito.
 - If a user uploads a new face multiple times, the DynamoDB user mapping points to the latest uploaded face. Older Rekognition faces may still remain in the collection.

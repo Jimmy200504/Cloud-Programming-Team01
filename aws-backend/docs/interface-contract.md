@@ -155,6 +155,10 @@ expirationDate
 deviceId
 createdAt
 updatedAt
+foodImage
+foodClassification
+expirationParsing
+recordType
 ```
 
 Frontend query index:
@@ -166,6 +170,26 @@ GSI sort key: expirationDate
 ```
 
 This lets the frontend query the current user's foods and sort them by expiration date.
+
+Food image storage:
+
+```text
+Do not store raw base64 food images in DynamoDB.
+Store the captured food image in S3 and save only foodImage metadata in DynamoDB.
+```
+
+Food image metadata:
+
+```json
+{
+  "foodImage": {
+    "bucket": "smart-fridge-food-images-dev-491919374787",
+    "s3Key": "food-images/cognito-sub/food-uuid.jpg",
+    "contentType": "image/jpeg",
+    "capturedAt": "2026-06-03T10:00:00Z"
+  }
+}
+```
 
 ## API Contract
 
@@ -448,7 +472,20 @@ Success response:
     "ownerUserId": "cognito-sub",
     "foodName": "milk",
     "expirationDate": "2026-06-10",
-    "createdAt": "2026-06-03T10:00:00Z"
+    "createdAt": "2026-06-03T10:00:00Z",
+    "foodClassification": {
+      "foodName": "milk",
+      "confidence": 0.92
+    },
+    "expirationParsing": {
+      "expirationDate": "2026-08-03",
+      "expirationDuration": "P2M",
+      "expirationDurationUnit": "months",
+      "expirationDurationAmount": 2,
+      "transcript": "兩個月後",
+      "confidence": 0.95,
+      "timezone": "Asia/Taipei"
+    }
   }
 }
 ```
@@ -558,12 +595,20 @@ Response:
       "foodId": "food-uuid",
       "foodName": "milk",
       "expirationDate": "2026-06-10",
+      "foodImage": {
+        "s3Key": "food-images/cognito-sub/food-uuid.jpg",
+        "contentType": "image/jpeg",
+        "capturedAt": "2026-06-03T10:00:00Z",
+        "dataUrl": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ..."
+      },
       "deviceId": "smart-fridge-001",
       "createdAt": "2026-06-03T10:00:00Z"
     }
   ]
 }
 ```
+
+The backend returns foods sorted by earliest `expirationDate` first. Frontend should preserve that order when rendering the inventory list.
 
 ### Get Device State
 

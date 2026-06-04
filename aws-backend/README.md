@@ -59,9 +59,16 @@ cognito-idp:SignUp
 dynamodb:PutItem
 dynamodb:GetItem
 dynamodb:Query
+dynamodb:Scan
+dynamodb:DeleteItem
 s3:PutObject
+s3:GetObject
 rekognition:IndexFaces
 rekognition:SearchFacesByImage
+rekognition:DetectLabels
+transcribe:StartTranscriptionJob
+transcribe:GetTranscriptionJob
+bedrock:InvokeModel
 ```
 
 Device Shadow, SES, and full retrieve-food flows also need IoT, SES, and DynamoDB delete/update permissions.
@@ -70,13 +77,57 @@ For Rekognition face integration, add at least:
 
 ```json
 {
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "rekognition:IndexFaces",
+        "rekognition:SearchFacesByImage",
+        "rekognition:DescribeCollection"
+      ],
+      "Resource": "arn:aws:rekognition:ap-northeast-1:491919374787:collection/ml-smart-fridge-faces"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "rekognition:DetectLabels",
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+For Bedrock food classification, add model invoke permission for the configured model:
+
+```json
+{
   "Effect": "Allow",
-  "Action": [
-    "rekognition:IndexFaces",
-    "rekognition:SearchFacesByImage",
-    "rekognition:DescribeCollection"
-  ],
-  "Resource": "arn:aws:rekognition:ap-northeast-1:491919374787:collection/ml-smart-fridge-faces"
+  "Action": "bedrock:InvokeModel",
+  "Resource": "arn:aws:bedrock:ap-northeast-1::foundation-model/jp.anthropic.claude-haiku-4-5-20251001-v1:0"
+}
+```
+
+For expiration audio parsing, the Lambda role also needs access to the configured `ML_S3_BUCKET` and Transcribe:
+
+```json
+{
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject"
+      ],
+      "Resource": "arn:aws:s3:::ml-smart-fridge-media-491919374787-ap-northeast-1-an/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "transcribe:StartTranscriptionJob",
+        "transcribe:GetTranscriptionJob"
+      ],
+      "Resource": "*"
+    }
+  ]
 }
 ```
 
@@ -92,7 +143,11 @@ Current real behavior:
 
 - `POST /auth/signup` calls Cognito.
 - `POST /users/me/face` calls Rekognition `IndexFaces`, writes the uploaded image to S3, and writes the user-face mapping to DynamoDB.
-- `POST /foods/put` writes food items to DynamoDB.
+- `POST /foods/detect` classifies a food image with Rekognition labels plus Bedrock catalog selection.
+- `POST /expiration/parse` converts expiration audio or transcript text into an expiration date through Transcribe and Bedrock.
+- `POST /foods/put` can classify `foodImageBase64`, parse `expirationAudioBase64`, stores the catalog `foodName`, and writes food items to DynamoDB.
+- `POST /foods/retrieve` can classify `foodImageBase64` to find the stored food item when `foodId` is not supplied.
+- `GET /foods/me` returns the current user's inventory sorted by expiration date, including food image display data when available.
 - `POST /test/owner-check` reads the food item from DynamoDB, calls Rekognition `SearchFacesByImage`, maps the face to Cognito through DynamoDB, and checks ownership.
 
 Current starter/mock behavior:

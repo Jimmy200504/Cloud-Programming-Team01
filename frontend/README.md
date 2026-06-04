@@ -15,6 +15,7 @@ That page is only for API integration testing. Frontend developers can use it as
 - Cognito login
 - Uploading a user face image
 - Creating a food item
+- Viewing the signed-in user's fridge inventory
 - Testing whether a face matches the food owner
 
 ## Run The Test Page
@@ -41,6 +42,14 @@ http://localhost:5173/test/
 ## API Contract
 
 Read this file before implementing the real frontend:
+
+```text
+INTEGRATION_GUIDE.md
+```
+
+It explains how a production frontend should structure auth state, API helpers, file uploads, face registration, food creation, expiration parsing, and inventory rendering when using React, Vue, Svelte, Angular, Next.js, Nuxt, or another framework.
+
+For exact backend request and response examples, also read:
 
 ```text
 ../aws-backend/docs/frontend-api-contract.md
@@ -102,6 +111,32 @@ POST /auth/signup
 Cognito ConfirmSignUp
 Cognito InitiateAuth
 POST /users/me/face with Authorization: Bearer <IdToken>
+```
+
+Inventory:
+
+```text
+After Cognito InitiateAuth, save the IdToken.
+Decode the IdToken payload and keep `sub` as the current user id.
+Call GET /foods/me with Authorization: Bearer <IdToken>.
+Render foods in the order returned by the API.
+```
+
+Inventory item UI requirements:
+
+```text
+foodName or foodClassification.displayName
+foodImage.dataUrl as the captured food photo
+expirationDate
+```
+
+The inventory list must show only the signed-in user's foods and be ordered by soonest expiration first. The backend query uses `ownerUserId`, so when the frontend creates a food item for the signed-in user it should include:
+
+```json
+{
+  "userId": "<IdToken sub>",
+  "ownerEmail": "<signed-in email>"
+}
 ```
 
 Owner check test:

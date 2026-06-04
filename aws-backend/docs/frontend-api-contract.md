@@ -334,11 +334,40 @@ Minimal request for frontend owner-check testing:
 ```json
 {
   "foodName": "milk",
+  "userId": "cognito-sub",
   "ownerEmail": "alice@example.com",
   "expirationDate": "2026-06-10",
   "recordType": "owner-check-test"
 }
 ```
+
+Optional request with food classification:
+
+```json
+{
+  "ownerEmail": "alice@example.com",
+  "userId": "cognito-sub",
+  "expirationDate": "2026-06-10",
+  "foodImageContentType": "image/jpeg",
+  "foodImageBase64": "/9j/4AAQSkZJRgABAQ..."
+}
+```
+
+Optional request with expiration audio parsing:
+
+```json
+{
+  "ownerEmail": "alice@example.com",
+  "userId": "cognito-sub",
+  "foodName": "milk",
+  "audioContentType": "audio/mpeg",
+  "expirationAudioBase64": "SUQzBAAAAAAA...",
+  "capturedAt": "2026-06-03T10:30:00+08:00",
+  "timezone": "Asia/Taipei"
+}
+```
+
+For direct testing without audio, send `expirationTranscript` instead of `expirationAudioBase64`.
 
 Optional request with owner user id:
 
@@ -362,14 +391,116 @@ Success response:
     "ownerUserId": "email#alice@example.com",
     "foodName": "milk",
     "expirationDate": "2026-06-10",
-    "createdAt": "2026-06-04T00:00:00.000Z"
+    "createdAt": "2026-06-04T00:00:00.000Z",
+    "foodClassification": {
+      "foodName": "milk",
+      "displayName": "Milk",
+      "confidence": 0.92,
+      "matchedCatalogId": "milk"
+    },
+    "expirationParsing": {
+      "expirationDate": "2026-08-03",
+      "expirationDuration": "P2M",
+      "expirationDurationUnit": "months",
+      "expirationDurationAmount": 2,
+      "transcript": "Two months later",
+      "confidence": 0.95,
+      "timezone": "Asia/Taipei"
+    }
   }
 }
 ```
 
 Frontend should keep `food.foodId` for owner check.
 
-## 7. Test Owner Check
+For inventory listing, `userId` should be the signed-in user's Cognito `sub` from the ID token. `GET /foods/me` queries DynamoDB by that same user id.
+
+## 7. Detect Food
+
+Endpoint:
+
+```text
+POST /foods/detect
+```
+
+Request:
+
+```json
+{
+  "foodImageContentType": "image/jpeg",
+  "foodImageBase64": "/9j/4AAQSkZJRgABAQ..."
+}
+```
+
+Success response:
+
+```json
+{
+  "success": true,
+  "food": {
+    "foodName": "milk",
+    "displayName": "Milk"
+  },
+  "foodClassification": {
+    "foodName": "milk",
+    "confidence": 0.92,
+    "model": "jp.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "rekognitionCandidates": [
+      {"label": "beverage", "confidence": 89.27}
+    ]
+  }
+}
+```
+
+## 8. Parse Expiration
+
+Endpoint:
+
+```text
+POST /expiration/parse
+```
+
+Request with transcript text:
+
+```json
+{
+  "expirationTranscript": "兩個月後",
+  "capturedAt": "2026-06-03T10:30:00+08:00",
+  "timezone": "Asia/Taipei"
+}
+```
+
+Request with audio:
+
+```json
+{
+  "audioContentType": "audio/mpeg",
+  "expirationAudioBase64": "SUQzBAAAAAAA...",
+  "capturedAt": "2026-06-03T10:30:00+08:00",
+  "timezone": "Asia/Taipei"
+}
+```
+
+Success response:
+
+```json
+{
+  "success": true,
+  "expiration": {
+    "expirationDate": "2026-08-03",
+    "expirationDuration": "P2M",
+    "expirationDurationUnit": "months",
+    "expirationDurationAmount": 2,
+    "transcript": "兩個月後",
+    "confidence": 0.95,
+    "timezone": "Asia/Taipei"
+  }
+}
+```
+
+Supported audio content types include `audio/wav`, `audio/mpeg`, `audio/mp4`, `audio/m4a`, `audio/flac`, `audio/ogg`, `audio/amr`, and `audio/webm`.
+
+## 9. Test Owner Check
 
 Endpoint:
 
@@ -471,7 +602,7 @@ Fail when the food id does not exist:
 }
 ```
 
-## 8. List My Foods
+## 10. List My Foods
 
 Endpoint:
 
@@ -500,6 +631,12 @@ Response:
       "foodId": "food-uuid",
       "foodName": "milk",
       "expirationDate": "2026-06-10",
+      "foodImage": {
+        "s3Key": "food-images/cognito-sub/food-uuid.jpg",
+        "contentType": "image/jpeg",
+        "capturedAt": "2026-06-03T10:00:00Z",
+        "dataUrl": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ..."
+      },
       "deviceId": "smart-fridge-001",
       "createdAt": "2026-06-04T00:00:00.000Z"
     }
@@ -507,7 +644,16 @@ Response:
 }
 ```
 
-## 9. Authenticate Face
+Frontend responsibilities:
+
+- Registration: call `POST /auth/signup`, then Cognito `ConfirmSignUp`.
+- Login: call Cognito `InitiateAuth`, save the Cognito ID token.
+- Face upload: call `POST /users/me/face` with `Authorization: Bearer <IdToken>`.
+- Inventory display: call `GET /foods/me` with `Authorization: Bearer <IdToken>` after login and after creating or retrieving food.
+- Inventory UI must show each current user's food name, captured food image, expiration date, and keep the list ordered by soonest expiration first.
+- If `foodImage.dataUrl` is missing, render an empty image state rather than trying to read S3 directly from the browser.
+
+## 11. Authenticate Face
 
 Endpoint:
 
@@ -569,7 +715,7 @@ Failure response:
 }
 ```
 
-## 10. Get Device State
+## 12. Get Device State
 
 Endpoint:
 
@@ -602,7 +748,7 @@ Response:
 }
 ```
 
-## 11. Update Lock
+## 13. Update Lock
 
 Endpoint:
 

@@ -24,7 +24,7 @@ Conditions:
 Globals:
   Function:
     Runtime: nodejs24.x
-    Timeout: 15
+    Timeout: 180
     MemorySize: 256
     Architectures:
       - arm64
@@ -35,9 +35,22 @@ Globals:
         FOOD_TABLE_NAME: !Ref FoodTable
         USER_FACE_TABLE_NAME: !Ref UserFaceTable
         FACE_IMAGE_BUCKET_NAME: !Ref FaceImageBucket
+        FOOD_IMAGE_BUCKET_NAME: !Ref FoodImageBucket
         USER_POOL_CLIENT_ID: !Ref UserPoolClient
         REKOGNITION_COLLECTION_ID: ml-smart-fridge-faces
         FACE_MATCH_THRESHOLD: "85"
+        FOOD_CLASSIFICATION_ENABLED: "true"
+        FOOD_CLASSIFICATION_MODEL_ID: jp.anthropic.claude-haiku-4-5-20251001-v1:0
+        FOOD_CLASSIFICATION_MIN_CONFIDENCE: "0.55"
+        REKOGNITION_LABEL_MIN_CONFIDENCE: "50"
+        ML_S3_BUCKET: !Sub ml-smart-fridge-media-${AWS::AccountId}-${AWS::Region}-an
+        ML_TIMEZONE: Asia/Taipei
+        ML_TRANSCRIBE_LANGUAGE_CODE: zh-TW
+        ML_TRANSCRIBE_IDENTIFY_LANGUAGE: "true"
+        ML_TRANSCRIBE_LANGUAGE_OPTIONS: zh-TW,en-US
+        ML_TRANSCRIBE_POLL_SECONDS: "2"
+        ML_TRANSCRIBE_TIMEOUT_SECONDS: "180"
+        ML_BEDROCK_DURATION_MIN_CONFIDENCE: "0.7"
         SES_FROM_EMAIL: !Ref SesFromEmail
         AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1"
 
@@ -171,6 +184,36 @@ Resources:
               - s3:PutObject
             Resource: !Sub ${FaceImageBucket.Arn}/user-faces/*
 
+  FoodImageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub smart-fridge-food-images-${StageName}-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  FoodImageBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FoodImageBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowLambdaRoleReadWriteFoodImages
+            Effect: Allow
+            Principal:
+              AWS: !Ref LambdaExecutionRoleArn
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+            Resource: !Sub ${FoodImageBucket.Arn}/food-images/*
+
   SmartFridgeThing:
     Type: AWS::IoT::Thing
     Properties:
@@ -238,6 +281,22 @@ Resources:
             Method: POST
             Auth:
               Authorizer: NONE
+        DetectFood:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /foods/detect
+            Method: POST
+            Auth:
+              Authorizer: NONE
+        ParseExpiration:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /expiration/parse
+            Method: POST
+            Auth:
+              Authorizer: NONE
         RetrieveFood:
           Type: Api
           Properties:
@@ -298,6 +357,9 @@ Outputs:
   FaceImageBucketName:
     Description: S3 bucket that stores user face images.
     Value: !Ref FaceImageBucket
+  FoodImageBucketName:
+    Description: S3 bucket that stores food images.
+    Value: !Ref FoodImageBucket
   ThingName:
     Description: IoT Core thing name.
     Value: !Ref SmartFridgeThing

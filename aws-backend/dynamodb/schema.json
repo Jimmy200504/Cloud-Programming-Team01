@@ -12,8 +12,56 @@
     "expirationDate": "YYYY-MM-DD string",
     "deviceId": "string",
     "createdAt": "ISO 8601 UTC timestamp",
-    "updatedAt": "ISO 8601 UTC timestamp"
+    "updatedAt": "ISO 8601 UTC timestamp",
+    "foodImage": {
+      "bucket": "string",
+      "s3Key": "string",
+      "contentType": "image/jpeg or image/png",
+      "capturedAt": "ISO 8601 timestamp"
+    },
+    "foodClassification": {
+      "foodId": "catalog id string",
+      "foodName": "catalog id string",
+      "displayName": "string",
+      "confidence": "number from 0 to 1",
+      "matchedCatalogId": "string",
+      "model": "Bedrock model id",
+      "reason": "string",
+      "rekognitionCandidates": [
+        {
+          "label": "string",
+          "confidence": "number from 0 to 100"
+        }
+      ]
+    },
+    "expirationParsing": {
+      "expirationDate": "YYYY-MM-DD string",
+      "expirationDuration": "ISO-8601 date duration, e.g. P2M",
+      "expirationDurationUnit": "days, weeks, or months",
+      "expirationDurationAmount": "number",
+      "transcript": "string",
+      "confidence": "number from 0 to 1",
+      "reason": "string",
+      "timezone": "IANA timezone string"
+    },
+    "recordType": "optional string for test or workflow tagging"
   },
+  "requiredApplicationAttributes": [
+    "foodId",
+    "ownerUserId",
+    "ownerEmail",
+    "foodName",
+    "expirationDate",
+    "deviceId",
+    "createdAt",
+    "updatedAt"
+  ],
+  "optionalApplicationAttributes": [
+    "foodImage",
+    "foodClassification",
+    "expirationParsing",
+    "recordType"
+  ],
   "globalSecondaryIndexes": [
     {
       "name": "OwnerExpirationIndex",
@@ -29,6 +77,37 @@
     "foodName": "milk",
     "expirationDate": "2026-06-10",
     "deviceId": "smart-fridge-001",
+    "foodImage": {
+      "bucket": "smart-fridge-food-images-dev-491919374787",
+      "s3Key": "food-images/cognito-sub/food-uuid-2026-06-03T10-00-00.000Z.jpg",
+      "contentType": "image/jpeg",
+      "capturedAt": "2026-06-03T10:00:00Z"
+    },
+    "foodClassification": {
+      "foodId": "milk",
+      "foodName": "milk",
+      "displayName": "Milk",
+      "confidence": 0.92,
+      "matchedCatalogId": "milk",
+      "model": "jp.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "reason": "Image appears to show milk.",
+      "rekognitionCandidates": [
+        {
+          "label": "beverage",
+          "confidence": 89.27
+        }
+      ]
+    },
+    "expirationParsing": {
+      "expirationDate": "2026-08-03",
+      "expirationDuration": "P2M",
+      "expirationDurationUnit": "months",
+      "expirationDurationAmount": 2,
+      "transcript": "兩個月後",
+      "confidence": 0.95,
+      "reason": "Clear relative duration expression.",
+      "timezone": "Asia/Taipei"
+    },
     "createdAt": "2026-06-03T10:00:00Z",
     "updatedAt": "2026-06-03T10:00:00Z"
   }

@@ -96,6 +96,16 @@
 
           <section class="panel wide">
             <div class="panel-heading">
+              <h2>My Fridge</h2>
+              <button id="refreshInventory" type="button" class="secondary">Refresh</button>
+            </div>
+            <div id="inventoryList" class="inventory-list">
+              <div class="empty-state">Sign in to view foods</div>
+            </div>
+          </section>
+
+          <section class="panel wide">
+            <div class="panel-heading">
               <h2>Owner Check</h2>
               <span id="ownerCheckState">Test</span>
             </div>
@@ -103,7 +113,11 @@
             <form id="ownerCheckForm" class="form-stack owner-grid">
               <label>
                 Food name
-                <input id="ownerFoodName" type="text" value="milk" required />
+                <input id="ownerFoodName" type="text" value="milk" />
+              </label>
+              <label>
+                Food image
+                <input id="ownerFoodImage" type="file" accept="image/jpeg,image/jpg,image/png" />
               </label>
               <label>
                 Owner email
@@ -116,6 +130,14 @@
               <label>
                 Expiration date
                 <input id="ownerExpirationDate" type="date" required />
+              </label>
+              <label>
+                Expiration transcript
+                <input id="ownerExpirationTranscript" type="text" placeholder="two months later" />
+              </label>
+              <label>
+                Expiration audio
+                <input id="ownerExpirationAudio" type="file" accept=".wav,.mp3,.mp4,.m4a,.flac,.ogg,.amr,.webm,audio/wav,audio/mpeg,audio/mp4,audio/m4a,audio/x-m4a,audio/flac,audio/ogg,audio/amr,audio/webm" />
               </label>
               <label class="wide-field">
                 Face image

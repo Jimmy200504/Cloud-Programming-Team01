@@ -25,14 +25,19 @@ const elements = {
   loginPassword: document.querySelector("#loginPassword"),
   faceImage: document.querySelector("#faceImage"),
   ownerFoodName: document.querySelector("#ownerFoodName"),
+  ownerFoodImage: document.querySelector("#ownerFoodImage"),
   ownerEmail: document.querySelector("#ownerEmail"),
   ownerUserId: document.querySelector("#ownerUserId"),
   ownerExpirationDate: document.querySelector("#ownerExpirationDate"),
+  ownerExpirationTranscript: document.querySelector("#ownerExpirationTranscript"),
+  ownerExpirationAudio: document.querySelector("#ownerExpirationAudio"),
   ownerFaceImage: document.querySelector("#ownerFaceImage"),
   previewImage: document.querySelector("#previewImage"),
   previewFrame: document.querySelector(".preview-frame"),
   output: document.querySelector("#output"),
   clearOutput: document.querySelector("#clearOutput"),
+  refreshInventory: document.querySelector("#refreshInventory"),
+  inventoryList: document.querySelector("#inventoryList"),
   sessionStatus: document.querySelector("#sessionStatus"),
   accountState: document.querySelector("#accountState"),
   uploadState: document.querySelector("#uploadState"),
@@ -40,9 +45,11 @@ const elements = {
 };
 
 syncSessionUi();
+if (session.email) elements.ownerEmail.value = session.email;
 elements.ownerExpirationDate.value = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
   .toISOString()
   .slice(0, 10);
+void loadInventory();
 
 elements.signupForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -148,6 +155,8 @@ elements.loginForm.addEventListener("submit", async (event) => {
     localStorage.setItem("smartFridge.accessToken", session.accessToken);
     localStorage.setItem("smartFridge.email", session.email);
     syncSessionUi();
+    elements.ownerEmail.value = session.email;
+    await loadInventory();
     writeOutput({
       success: true,
       email: username,
@@ -246,13 +255,33 @@ elements.ownerCheckForm.addEventListener("submit", async (event) => {
   setBusy(elements.ownerCheckForm, true);
   elements.ownerCheckState.textContent = "Creating";
   try {
-    const createdFood = await postJson(`${CONFIG.apiBaseUrl}/foods/put`, {
+    const foodFile = elements.ownerFoodImage.files[0];
+    const userId = currentUserId();
+    const putFoodBody = {
       foodName: elements.ownerFoodName.value.trim(),
       ownerEmail,
+      userId,
       ownerUserId,
       expirationDate: elements.ownerExpirationDate.value,
       recordType: "owner-check-test"
-    });
+    };
+    if (foodFile) {
+      putFoodBody.foodImageContentType = foodFile.type || "image/jpeg";
+      putFoodBody.foodImageBase64 = await fileToBase64(foodFile);
+    }
+    const expirationAudioFile = elements.ownerExpirationAudio.files[0];
+    if (expirationAudioFile) {
+      putFoodBody.audioContentType = audioContentType(expirationAudioFile);
+      putFoodBody.expirationAudioBase64 = await fileToBase64(expirationAudioFile);
+      putFoodBody.capturedAt = new Date().toISOString();
+      putFoodBody.timezone = "Asia/Taipei";
+    } else if (elements.ownerExpirationTranscript.value.trim()) {
+      putFoodBody.expirationTranscript = elements.ownerExpirationTranscript.value.trim();
+      putFoodBody.capturedAt = new Date().toISOString();
+      putFoodBody.timezone = "Asia/Taipei";
+    }
+
+    const createdFood = await postJson(`${CONFIG.apiBaseUrl}/foods/put`, putFoodBody);
 
     elements.ownerCheckState.textContent = "Checking";
     const faceImageBase64 = await fileToBase64(file);
@@ -266,6 +295,7 @@ elements.ownerCheckForm.addEventListener("submit", async (event) => {
       createdFood: createdFood.food,
       ownerCheck: response
     });
+    await loadInventory();
   } catch (error) {
     elements.ownerCheckState.textContent = "Failed";
     writeOutput(errorToObject(error));
@@ -276,6 +306,10 @@ elements.ownerCheckForm.addEventListener("submit", async (event) => {
 
 elements.clearOutput.addEventListener("click", () => {
   writeOutput({});
+});
+
+elements.refreshInventory.addEventListener("click", async () => {
+  await loadInventory();
 });
 
 async function postJson(url, body, headers = {}) {
@@ -310,6 +344,23 @@ async function postJsonAllowFalse(url, body, headers = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    const error = new Error(payload.message || response.statusText);
+    error.payload = {
+      status: response.status,
+      ...payload
+    };
+    throw error;
+  }
+  return payload;
+}
+
+async function getJson(url, headers = {}) {
+  const response = await fetch(url, {
+    method: "GET",
+    headers
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.success === false) {
     const error = new Error(payload.message || response.statusText);
     error.payload = {
       status: response.status,
@@ -368,6 +419,126 @@ function syncSessionUi() {
     elements.sessionStatus.textContent = "Signed out";
     elements.sessionStatus.classList.remove("signed-in");
   }
+  renderInventoryPlaceholder(session.idToken ? "Loading foods" : "Sign in to view foods");
+}
+
+function audioContentType(file) {
+  if (file.type) return file.type;
+  const extension = file.name.split(".").pop().toLowerCase();
+  return {
+    wav: "audio/wav",
+    mp3: "audio/mpeg",
+    mp4: "audio/mp4",
+    m4a: "audio/x-m4a",
+    flac: "audio/flac",
+    ogg: "audio/ogg",
+    amr: "audio/amr",
+    webm: "audio/webm"
+  }[extension] || "audio/mpeg";
+}
+
+function currentUserId() {
+  const payload = parseJwt(session.idToken);
+  return payload.sub || "";
+}
+
+function parseJwt(token) {
+  const [, payload] = String(token || "").split(".");
+  if (!payload) return {};
+  try {
+    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return {};
+  }
+}
+
+async function loadInventory() {
+  if (!session.idToken) {
+    renderInventoryPlaceholder("Sign in to view foods");
+    return;
+  }
+
+  elements.refreshInventory.disabled = true;
+  renderInventoryPlaceholder("Loading foods");
+  try {
+    const response = await getJson(`${CONFIG.apiBaseUrl}/foods/me`, {
+      Authorization: `Bearer ${session.idToken}`
+    });
+    renderInventory(response.foods || []);
+  } catch (error) {
+    renderInventoryPlaceholder(error.message || "Unable to load foods");
+    writeOutput(errorToObject(error));
+  } finally {
+    elements.refreshInventory.disabled = false;
+  }
+}
+
+function renderInventory(foods) {
+  if (foods.length === 0) {
+    renderInventoryPlaceholder("No foods in fridge");
+    return;
+  }
+
+  elements.inventoryList.innerHTML = "";
+  for (const food of foods) {
+    const item = document.createElement("article");
+    item.className = "inventory-item";
+
+    const imageWrap = document.createElement("div");
+    imageWrap.className = "inventory-image";
+    if (food.foodImage?.dataUrl) {
+      const image = document.createElement("img");
+      image.src = food.foodImage.dataUrl;
+      image.alt = food.foodName || "Food image";
+      imageWrap.append(image);
+    } else {
+      imageWrap.textContent = "No photo";
+    }
+
+    const details = document.createElement("div");
+    details.className = "inventory-details";
+
+    const name = document.createElement("h3");
+    name.textContent = displayFoodName(food);
+
+    const expiration = document.createElement("p");
+    expiration.className = "inventory-date";
+    expiration.textContent = `Expires ${food.expirationDate || "unknown"}`;
+
+    const capturedAt = document.createElement("p");
+    capturedAt.className = "inventory-meta";
+    capturedAt.textContent = food.foodImage?.capturedAt
+      ? `Captured ${formatDateTime(food.foodImage.capturedAt)}`
+      : "No capture time";
+
+    details.append(name, expiration, capturedAt);
+    item.append(imageWrap, details);
+    elements.inventoryList.append(item);
+  }
+}
+
+function renderInventoryPlaceholder(message) {
+  elements.inventoryList.innerHTML = "";
+  const empty = document.createElement("div");
+  empty.className = "empty-state";
+  empty.textContent = message;
+  elements.inventoryList.append(empty);
+}
+
+function displayFoodName(food) {
+  return food.foodClassification?.displayName || food.foodName || "Unnamed food";
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString([], {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 function writeOutput(value) {
