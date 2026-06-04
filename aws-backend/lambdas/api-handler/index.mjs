@@ -37,6 +37,7 @@ const FOOD_CATALOG = [
   { id: "fish", displayName: "Fish", zhName: "魚", aliases: ["fish", "魚", "鱼"], parent: null, category: "seafood" },
   { id: "vegetable", displayName: "Vegetable", zhName: "蔬菜", aliases: ["vegetable", "vegetables", "蔬菜"], parent: null, category: "vegetable" },
   { id: "fruit", displayName: "Fruit", zhName: "水果", aliases: ["fruit", "fruits", "水果"], parent: null, category: "fruit" },
+  { id: "soft_drink", displayName: "Soft drink", zhName: "汽水", aliases: ["soft drink", "soft drinks", "cola", "coke", "coca-cola", "coca cola", "soda", "pop bottle", "汽水", "可樂", "可乐"], parent: "beverage", category: "beverage" },
   { id: "beverage", displayName: "Beverage", zhName: "飲料", aliases: ["beverage", "drink", "飲料", "饮料"], parent: null, category: "beverage" }
 ];
 
@@ -392,6 +393,17 @@ async function retrieveFood(body) {
   const validation = validateImage(body.foodImageBase64, body.foodImageContentType);
   if (validation) return validation;
 
+  const actorUserId = body.actorUserId || body.userId || body.ownerUserId;
+  const actorEmail = normalizeEmail(body.actorEmail || body.ownerEmail);
+  if (!actorUserId && !actorEmail) {
+    return {
+      success: false,
+      authorized: false,
+      errorCode: "USER_NOT_FOUND",
+      message: "A recognized actor userId or actorEmail is required to retrieve food"
+    };
+  }
+
   const foodClassification = await classifyFoodImage({
     imageBase64: body.foodImageBase64,
     contentType: body.foodImageContentType,
@@ -421,7 +433,7 @@ async function retrieveFood(body) {
       await sendOwnerAlert({
         ownerEmail: food.ownerEmail,
         foodName: food.foodName,
-        actorUserId: body.userId
+        actorUserId
       });
       await updateThingShadow(DEVICE_ID, { desired: { led: "alert" } });
     }
@@ -447,17 +459,16 @@ async function retrieveFood(body) {
   }
 
   const ownerMatches =
-    !requestedFood ||
-    !body.userId ||
-    requestedFood.ownerUserId === body.userId ||
-    requestedFood.ownerEmail === normalizeEmail(body.ownerEmail);
+    requestedFood &&
+    ((actorUserId && requestedFood.ownerUserId === actorUserId) ||
+      (actorEmail && normalizeEmail(requestedFood.ownerEmail) === actorEmail));
 
   if (!ownerMatches) {
     if (!MOCK_MODE) {
       await sendOwnerAlert({
         ownerEmail: requestedFood.ownerEmail,
         foodName: requestedFood.foodName,
-        actorUserId: body.userId
+        actorUserId: actorUserId || actorEmail
       });
       await updateThingShadow(DEVICE_ID, { desired: { led: "alert" } });
     }
@@ -477,7 +488,7 @@ async function retrieveFood(body) {
     await deleteFoodItem(deletedFoodId);
   }
 
-  const actorName = body.actorDisplayName || body.actorName || body.ownerEmail || body.userId || "Recognized user";
+  const actorName = body.actorDisplayName || body.actorName || actorEmail || actorUserId || "Recognized user";
   const retrievedFoodName = requestedFood?.foodName || foodClassification.displayName || foodClassification.foodName;
   return {
     success: true,
@@ -1024,6 +1035,32 @@ function catalogFoodId(value) {
   return catalogItem?.id || normalized;
 }
 
+function equivalentFoodNames(foodName) {
+  const catalogId = catalogFoodId(foodName);
+  const names = new Set([normalizeFoodLabel(foodName), catalogId]);
+  const catalogItem = FOOD_CATALOG.find((item) => item.id === catalogId);
+  if (catalogItem) {
+    names.add(catalogItem.id);
+    names.add(normalizeFoodLabel(catalogItem.displayName));
+    names.add(normalizeFoodLabel(catalogItem.zhName));
+    if (catalogItem.parent) names.add(catalogItem.parent);
+    for (const alias of catalogItem.aliases) {
+      names.add(normalizeFoodLabel(alias));
+      names.add(catalogFoodId(alias));
+    }
+    for (const childItem of FOOD_CATALOG.filter((item) => item.parent === catalogItem.id)) {
+      names.add(childItem.id);
+      names.add(normalizeFoodLabel(childItem.displayName));
+      names.add(normalizeFoodLabel(childItem.zhName));
+      for (const alias of childItem.aliases) {
+        names.add(normalizeFoodLabel(alias));
+        names.add(catalogFoodId(alias));
+      }
+    }
+  }
+  return [...names].filter(Boolean);
+}
+
 function imageFormatFromContentType(contentType) {
   if (contentType === "image/png") return "png";
   return "jpeg";
@@ -1447,22 +1484,35 @@ async function publicFoodImage(foodImage) {
   }
 
   try {
-    const bytes = await getS3ObjectBytes({
-      bucketName: foodImage.bucket,
-      key: foodImage.s3Key
-    });
     return {
       ...publicImage,
-      dataUrl: `data:${foodImage.contentType};base64,${Buffer.from(bytes).toString("base64")}`
+      url: await getS3ObjectPresignedUrl({
+        bucketName: foodImage.bucket,
+        key: foodImage.s3Key
+      })
     };
   } catch (error) {
-    console.warn("Unable to read food image", {
+    console.warn("Unable to create food image URL", {
       bucket: foodImage.bucket,
       s3Key: foodImage.s3Key,
       error: error.message
     });
     return publicImage;
   }
+}
+
+async function getS3ObjectPresignedUrl({ bucketName, key }) {
+  const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+  const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
+  const client = new S3Client({});
+  return getSignedUrl(
+    client,
+    new GetObjectCommand({
+      Bucket: bucketName,
+      Key: key
+    }),
+    { expiresIn: 900 }
+  );
 }
 
 async function getS3ObjectBytes({ bucketName, key }) {
@@ -1584,12 +1634,15 @@ async function getFoodItem(foodId) {
 }
 
 async function findFoodByName({ foodName, ownerUserId }) {
-  const normalizedFoodName = String(foodName || "").trim().toLowerCase();
-  if (!normalizedFoodName) return null;
+  const foodNames = equivalentFoodNames(foodName);
+  if (foodNames.length === 0) return null;
 
   if (!FOOD_TABLE_NAME) {
-    return mockFoods.find((food) => normalizeFoodLabel(food.foodName) === normalizedFoodName) || null;
+    return mockFoods.find((food) => foodNames.includes(catalogFoodId(food.foodName))) || null;
   }
+
+  const expressionAttributeValues = Object.fromEntries(foodNames.map((name, index) => [`:foodName${index}`, name]));
+  const foodNamePlaceholders = Object.keys(expressionAttributeValues).join(", ");
 
   if (ownerUserId) {
     const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb");
@@ -1600,10 +1653,10 @@ async function findFoodByName({ foodName, ownerUserId }) {
         TableName: FOOD_TABLE_NAME,
         IndexName: "OwnerExpirationIndex",
         KeyConditionExpression: "ownerUserId = :ownerUserId",
-        FilterExpression: "foodName = :foodName",
+        FilterExpression: `foodName IN (${foodNamePlaceholders})`,
         ExpressionAttributeValues: {
           ":ownerUserId": ownerUserId,
-          ":foodName": normalizedFoodName
+          ...expressionAttributeValues
         }
       })
     );
@@ -1616,10 +1669,8 @@ async function findFoodByName({ foodName, ownerUserId }) {
   const result = await client.send(
     new ScanCommand({
       TableName: FOOD_TABLE_NAME,
-      FilterExpression: "foodName = :foodName",
-      ExpressionAttributeValues: {
-        ":foodName": normalizedFoodName
-      }
+      FilterExpression: `foodName IN (${foodNamePlaceholders})`,
+      ExpressionAttributeValues: expressionAttributeValues
     })
   );
   return result.Items?.[0] || null;

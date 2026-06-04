@@ -50,6 +50,8 @@ smart-fridge-dev-yourname
 The `SesFromEmail` parameter must be a verified SES sender address if real email sending is enabled later. It can be left empty for the current MVP setup.
 
 The Lambda function uses an existing execution role through the `LambdaExecutionRoleArn` parameter. The deploying AWS user needs `iam:PassRole` for that role.
+Set `LambdaExecutionRoleName` to the role name portion of that ARN so CloudFormation can attach the IoT Device Shadow and SES permissions.
+Set `MockMode=false` only when you want real DynamoDB delete, IoT Device Shadow, and SES calls.
 
 The Lambda execution role needs these permissions for the current backend:
 
@@ -69,9 +71,13 @@ rekognition:DetectLabels
 transcribe:StartTranscriptionJob
 transcribe:GetTranscriptionJob
 bedrock:InvokeModel
+iot:GetThingShadow
+iot:UpdateThingShadow
+ses:SendEmail
+ses:SendRawEmail
 ```
 
-Device Shadow, SES, and full retrieve-food flows also need IoT, SES, and DynamoDB delete/update permissions.
+The SAM template attaches the IoT Device Shadow and SES permissions to `LambdaExecutionRoleName`.
 
 For Rekognition face integration, add at least:
 
@@ -102,9 +108,15 @@ For Bedrock food classification, add model invoke permission for the configured 
 {
   "Effect": "Allow",
   "Action": "bedrock:InvokeModel",
-  "Resource": "arn:aws:bedrock:ap-northeast-1::foundation-model/jp.anthropic.claude-haiku-4-5-20251001-v1:0"
+  "Resource": [
+    "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
+    "arn:aws:bedrock:ap-northeast-3::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
+    "arn:aws:bedrock:ap-northeast-1:491919374787:inference-profile/jp.anthropic.claude-haiku-4-5-20251001-v1:0"
+  ]
 }
 ```
+
+The `jp.` model id is an inference profile id. It currently routes to foundation models in `ap-northeast-1` and `ap-northeast-3`, so the Lambda role must allow both routed foundation model ARNs plus the account-scoped `inference-profile` ARN from the runtime error.
 
 For expiration audio parsing, the Lambda role also needs access to the configured `ML_S3_BUCKET` and Transcribe:
 
@@ -136,7 +148,7 @@ For expiration audio parsing, the Lambda role also needs access to the configure
 The Lambda is deployed with:
 
 ```text
-MOCK_MODE=true
+MOCK_MODE=<MockMode parameter>
 ```
 
 Current real behavior:
@@ -161,6 +173,39 @@ When `MOCK_MODE=false`, the same Lambda has starter logic for:
 - deleting retrieved food items from DynamoDB
 - reading and updating IoT Device Shadow
 - sending SES email for unauthorized retrieval when `SesFromEmail` is configured
+
+## IoT Device Shadow And SES Pre-Hardware Test
+
+Keep `MockMode=true` for the normal frontend demo. To test the cloud integration before Raspberry Pi hardware is connected, deploy with:
+
+```bash
+sam deploy \
+  --parameter-overrides \
+  StageName=dev \
+  DeviceId=smart-fridge-001 \
+  MockMode=false \
+  SesFromEmail=verified-sender@example.com \
+  LambdaExecutionRoleArn=arn:aws:iam::491919374787:role/SmartFridgeLambdaExecutionRole \
+  LambdaExecutionRoleName=SmartFridgeLambdaExecutionRole
+```
+
+Seed a reported shadow state from your AWS CLI:
+
+```bash
+aws iot-data update-thing-shadow \
+  --thing-name smart-fridge-001 \
+  --payload '{"state":{"reported":{"lock":"locked","led":"off","temperature":4.2,"humidity":55,"lastSeenAt":"2026-06-04T00:00:00Z"}}}' \
+  /tmp/smart-fridge-shadow-response.json
+```
+
+Then `GET /device/smart-fridge-001/state` should read the reported values, and `POST /device/smart-fridge-001/lock` with `{"desiredLock":"unlocked"}` should update the shadow desired lock state.
+
+SES email only sends when all of these are true:
+
+- `MockMode=false`
+- `SesFromEmail` is not empty
+- the sender address is verified in SES
+- if the AWS account is still in SES sandbox, the recipient owner email is also verified
 
 ## Local Lambda Smoke Test
 

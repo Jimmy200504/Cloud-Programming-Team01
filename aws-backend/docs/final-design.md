@@ -70,6 +70,7 @@ The backend currently provides:
 - Authenticated inventory listing through `GET /foods/me`.
 - IoT Device Shadow read through `GET /device/{deviceId}/state`.
 - IoT Device Shadow desired lock update through `POST /device/{deviceId}/lock`.
+- SES owner alert hook for unauthorized retrieval when `MockMode=false` and `SesFromEmail` is verified.
 - CORS enabled for frontend local testing.
 
 ## Main Data Flow
@@ -261,12 +262,42 @@ off
 alert
 ```
 
+Before hardware is connected, the cloud side can be tested by manually writing the reported state:
+
+```bash
+aws iot-data update-thing-shadow \
+  --thing-name smart-fridge-001 \
+  --payload '{"state":{"reported":{"lock":"locked","led":"off","temperature":4.2,"humidity":55,"lastSeenAt":"2026-06-04T00:00:00Z"}}}' \
+  /tmp/smart-fridge-shadow-response.json
+```
+
+With `MockMode=false`, the backend reads that reported state from `GET /device/{deviceId}/state` and writes desired lock changes from `POST /device/{deviceId}/lock`.
+
+## SES Owner Alert Design
+
+SES is used only for owner alerts when a non-owner tries to retrieve food.
+
+Runtime requirements:
+
+```text
+MockMode=false
+SesFromEmail is configured
+SesFromEmail is verified in SES
+Recipient owner email is verified too if the SES account is still in sandbox
+```
+
+If `MockMode=true` or `SesFromEmail` is empty, the API returns the owner-email action as reserved instead of sending real email.
+
 ## Current Limitations
 
 - Face images are sent as base64 in JSON for MVP simplicity.
 - Owner check is currently a test API, not the final refrigerator retrieval flow.
 - Food recognition from a food image is implemented for the MVP food catalog through Rekognition labels plus Bedrock image classification.
+- Retrieve ownership is precise only when the request identifies a specific `foodId`. If retrieval uses only a food image, the backend can classify the food type and identify the actor, but it cannot prove which physical item was taken when multiple users own the same food type. For example, if A owns a cola and B also owns a cola, a cola image alone cannot distinguish A's bottle from B's bottle.
+- Production-safe physical-item ownership needs a unique item signal such as `foodId`, QR code, barcode, RFID tag, shelf/bin position, weight sensor event, or manual item selection.
 - Expiration extraction from audio is implemented through S3, Transcribe, Bedrock duration parsing, and timezone-aware date math.
+- Expiration transcript text takes priority over audio. The backend reads `expirationTranscript`, `expirationTranscriptText`, or `transcriptText` first; if none is present, it uses `expirationAudioS3Uri`, then `expirationAudioBase64`.
+- Expiration voice/transcript tests should use explicit relative durations such as `三天後`, `兩週後`, `一個月後`, `two weeks later`, or `3 days later`. Avoid vague calendar words such as `明天`, `後天`, `下週`, `下個月`, `月底`, `tomorrow`, or `next week`.
 - SES notification logic exists as a backend hook, but real sending requires a verified `SesFromEmail`.
 - Cognito signup is handled by backend, but confirmation and login are called directly from frontend to Cognito.
 - If a user uploads a new face multiple times, the DynamoDB user mapping points to the latest uploaded face. Older Rekognition faces may still remain in the collection.
@@ -280,9 +311,10 @@ StageName
 DeviceId
 SesFromEmail
 LambdaExecutionRoleArn
+LambdaExecutionRoleName
 FACE_MATCH_THRESHOLD
 REKOGNITION_COLLECTION_ID
-MOCK_MODE
+MockMode
 ```
 
 Recommended changes:
@@ -290,6 +322,7 @@ Recommended changes:
 - Increase `FACE_MATCH_THRESHOLD` to `90` or `95` for a stricter demo.
 - Change `DeviceId` if the Raspberry Pi team uses a different IoT Thing name.
 - Set `SesFromEmail` only after the email address is verified in SES.
+- Keep `MockMode=true` for normal frontend demos; use `MockMode=false` for cloud integration tests.
 - Keep `REKOGNITION_COLLECTION_ID` aligned with the Rekognition team's collection.
 
 Riskier changes:

@@ -7,7 +7,7 @@ s3_prefix = "smart-fridge-dev-gaga"
 region = "ap-northeast-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "StageName=\"dev\" DeviceId=\"smart-fridge-001\" SesFromEmail=\"\" LambdaExecutionRoleArn=\"arn:aws:iam::491919374787:role/SmartFridgeLambdaExecutionRole\""
+parameter_overrides = "StageName=\"dev\" DeviceId=\"smart-fridge-001\" MockMode=\"true\" SesFromEmail=\"\" LambdaExecutionRoleArn=\"arn:aws:iam::491919374787:role/SmartFridgeLambdaExecutionRole\" LambdaExecutionRoleName=\"SmartFridgeLambdaExecutionRole\""
 image_repositories = []
 
 [default.global.parameters]

@@ -345,22 +345,30 @@ elements.retrieveFlowForm.addEventListener("submit", async (event) => {
       return;
     }
 
-    elements.retrieveFlowState.textContent = "Unlock";
-    const hardwareUnlock = await signalFridgeUnlock("retrieve");
     const recognizedUser = faceAuth.user || {};
     const foodImageBase64 = await fileToBase64(foodFile);
+    let hardwareUnlock = {
+      requested: false,
+      reason: "Waiting for ownership check"
+    };
 
     elements.retrieveFlowState.textContent = "Checking";
     const response = await postJsonAllowFalse(`${CONFIG.apiBaseUrl}/foods/retrieve`, {
       foodId: elements.retrieveFoodId.value.trim(),
       foodName: elements.retrieveFoodName.value.trim(),
+      actorUserId: recognizedUser.userId || currentUserId(),
+      actorEmail: recognizedUser.email || session.email,
       userId: recognizedUser.userId || currentUserId(),
-      ownerEmail: recognizedUser.email || session.email,
       actorDisplayName: recognizedUser.displayName || recognizedUser.email || "Recognized user",
       foodImageContentType: foodFile.type || "image/jpeg",
       foodImageBase64,
       deviceId: "smart-fridge-001"
     });
+
+    if (response.authorized) {
+      elements.retrieveFlowState.textContent = "Unlock";
+      hardwareUnlock = await signalFridgeUnlock("retrieve");
+    }
 
     elements.retrieveFlowState.textContent = response.authorized ? "Retrieved" : "Alert";
     writeOutput({
@@ -619,10 +627,12 @@ function renderInventory(foods) {
 
     const imageWrap = document.createElement("div");
     imageWrap.className = "inventory-image";
-    if (food.foodImage?.dataUrl) {
+    const imageUrl = food.foodImage?.url || food.foodImage?.dataUrl;
+    if (imageUrl) {
       const image = document.createElement("img");
-      image.src = food.foodImage.dataUrl;
+      image.src = imageUrl;
       image.alt = food.foodName || "Food image";
+      image.loading = "lazy";
       imageWrap.append(image);
     } else {
       imageWrap.textContent = "No photo";

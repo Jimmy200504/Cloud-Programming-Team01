@@ -9,6 +9,13 @@ Parameters:
   DeviceId:
     Type: String
     Default: smart-fridge-001
+  MockMode:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Set to false to enable real DynamoDB delete, IoT Device Shadow, and SES calls.
   SesFromEmail:
     Type: String
     Default: ""
@@ -17,6 +24,10 @@ Parameters:
     Type: String
     Default: arn:aws:iam::491919374787:role/SmartFridgeLambdaExecutionRole
     Description: Existing IAM role ARN for the Lambda function.
+  LambdaExecutionRoleName:
+    Type: String
+    Default: SmartFridgeLambdaExecutionRole
+    Description: Existing IAM role name used to attach IoT Device Shadow and SES permissions.
 
 Conditions:
   HasSesFromEmail: !Not [!Equals [!Ref SesFromEmail, ""]]
@@ -30,7 +41,7 @@ Globals:
       - arm64
     Environment:
       Variables:
-        MOCK_MODE: "true"
+        MOCK_MODE: !Ref MockMode
         DEVICE_ID: !Ref DeviceId
         FOOD_TABLE_NAME: !Ref FoodTable
         USER_FACE_TABLE_NAME: !Ref UserFaceTable
@@ -248,6 +259,29 @@ Resources:
     Condition: HasSesFromEmail
     Properties:
       EmailIdentity: !Ref SesFromEmail
+
+  LambdaDeviceShadowSesPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub smart-fridge-${StageName}-device-shadow-ses
+      Roles:
+        - !Ref LambdaExecutionRoleName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowLambdaDeviceShadowAccess
+            Effect: Allow
+            Action:
+              - iot:GetThingShadow
+              - iot:UpdateThingShadow
+            Resource:
+              - !Sub arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:thing/${DeviceId}
+          - Sid: AllowLambdaOwnerAlertEmail
+            Effect: Allow
+            Action:
+              - ses:SendEmail
+              - ses:SendRawEmail
+            Resource: "*"
 
   ApiHandlerFunction:
     Type: AWS::Serverless::Function

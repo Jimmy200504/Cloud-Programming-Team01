@@ -128,6 +128,10 @@ Requires number: yes
 Requires symbol: no
 ```
 
+Frontend signup UI should show these password rules before submit. A safe example is `TestPassword123`.
+
+After signup, Cognito sends a confirmation code to the user's email address. Tell the user to check their inbox and spam/junk folder; the verification email often appears in spam during testing.
+
 Success response:
 
 ```json
@@ -369,6 +373,14 @@ Optional request with expiration audio parsing:
 
 For direct testing without audio, send `expirationTranscript` instead of `expirationAudioBase64`.
 
+Expiration input rules:
+
+- Test voice and transcript phrases must use explicit relative durations, such as `三天後`, `兩週後`, `一個月後`, `two weeks later`, or `3 days later`.
+- Avoid vague calendar words in tests, such as `明天`, `後天`, `下週`, `下個月`, `月底`, `tomorrow`, `next week`, or `next month`.
+- If `expirationTranscript`, `expirationTranscriptText`, or `transcriptText` is present and non-empty, the backend uses that text and ignores audio inputs.
+- If no transcript text is present, `expirationAudioS3Uri` is used before `expirationAudioBase64`.
+- If `expirationDate` is also sent with transcript or audio input, the parsed expiration date takes priority.
+
 Optional request with owner user id:
 
 ```json
@@ -481,6 +493,23 @@ Request with audio:
 }
 ```
 
+Input priority:
+
+```text
+expirationTranscript / expirationTranscriptText / transcriptText
+expirationAudioS3Uri
+expirationAudioBase64
+```
+
+If transcript text and audio are both provided, transcript text wins and the backend does not transcribe the audio.
+
+Testing phrase requirements:
+
+```text
+Use explicit relative durations: 三天後, 兩週後, 一個月後, two weeks later, 3 days later.
+Avoid vague calendar words: 明天, 後天, 下週, 下個月, 月底, tomorrow, next week, next month.
+```
+
 Success response:
 
 ```json
@@ -517,6 +546,14 @@ None in the current MVP route
 Purpose:
 
 Use this route to test whether a face image belongs to the owner of an existing food item.
+
+Ownership limitation:
+
+- The MVP can reliably verify ownership when the request identifies a specific `foodId`.
+- If retrieval is based only on a food image and recognized user, the backend can identify the food type, such as `cola`, and the actor, such as user B.
+- It cannot reliably distinguish two physical items of the same type when multiple users own matching items. For example, if A owns a cola and B also owns a cola, and B presents a cola image, the MVP cannot prove whether the physical bottle is A's cola or B's cola.
+- For accurate physical-item ownership, the retrieve flow must provide a unique item signal such as `foodId`, QR code, barcode, RFID tag, shelf/bin position, weight sensor event, or manual item selection.
+- Until such a signal exists, same-food multi-owner cases are a known limitation and should not be treated as fully secure.
 
 Required flow:
 

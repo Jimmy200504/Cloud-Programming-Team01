@@ -113,6 +113,18 @@ Cognito InitiateAuth
 POST /users/me/face with Authorization: Bearer <IdToken>
 ```
 
+Signup password rules:
+
+```text
+Minimum length: 8
+Requires uppercase: yes
+Requires lowercase: yes
+Requires number: yes
+Requires symbol: no
+```
+
+After signup, the user must open the Cognito confirmation email and enter the code. In testing, this email often appears in the spam/junk folder, so tell users to check there if they do not see it in the inbox.
+
 Inventory:
 
 ```text

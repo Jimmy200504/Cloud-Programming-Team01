@@ -250,6 +250,18 @@ Request:
 }
 ```
 
+Password currently follows the Cognito policy:
+
+```text
+Minimum length: 8
+Requires uppercase: yes
+Requires lowercase: yes
+Requires number: yes
+Requires symbol: no
+```
+
+After signup, Cognito sends a confirmation code to the user's email address. Tell the user to check their inbox and spam/junk folder; the verification email often appears in spam during testing.
+
 Success response:
 
 ```json
@@ -462,6 +474,14 @@ Request:
 }
 ```
 
+Expiration input rules:
+
+- Test voice and transcript phrases must use explicit relative durations, such as `三天後`, `兩週後`, `一個月後`, `two weeks later`, or `3 days later`.
+- Avoid vague calendar words in tests, such as `明天`, `後天`, `下週`, `下個月`, `月底`, `tomorrow`, `next week`, or `next month`.
+- Transcript text takes priority over audio. The backend checks `expirationTranscript`, `expirationTranscriptText`, and `transcriptText` first.
+- If no transcript text is present, `expirationAudioS3Uri` is used before `expirationAudioBase64`.
+- If `expirationDate` is also sent with transcript or audio input, the parsed expiration date takes priority.
+
 Success response:
 
 ```json
@@ -535,6 +555,13 @@ Response when the food belongs to another user:
 ```
 
 When `authorized` is `false`, Lambda should trigger SES email notification and update Device Shadow `desired.led` to `alert`.
+
+Ownership limitation:
+
+- This MVP can reliably check ownership when the retrieve request includes a specific `foodId`.
+- If the retrieve request only includes a food image, the backend can classify the food type and identify the actor, but it cannot prove which physical item was taken when multiple users own matching items.
+- Example: if A owns a cola and B also owns a cola, and B presents a cola image, the system cannot distinguish A's physical cola from B's physical cola without another item signal.
+- Accurate physical-item ownership requires a unique item identifier or sensor signal, such as `foodId`, QR code, barcode, RFID tag, shelf/bin position, weight sensor event, or manual item selection.
 
 ## Frontend APIs
 

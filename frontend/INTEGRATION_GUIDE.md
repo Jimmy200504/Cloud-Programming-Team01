@@ -171,9 +171,46 @@ For file pickers, allow common extensions:
 <input type="file" accept="audio/*,.wav,.mp3,.m4a,.mp4,.flac,.ogg,.amr,.webm" />
 ```
 
+Expiration speech and transcript test inputs must be explicit relative durations. Good examples include:
+
+```text
+三天後
+兩週後
+一個月後
+two weeks later
+3 days later
+```
+
+Avoid vague calendar words in tests, including:
+
+```text
+明天
+後天
+下週
+下個月
+月底
+tomorrow
+next week
+next month
+```
+
+When both transcript text and audio are sent, transcript text has priority. The backend uses the first non-empty value among `expirationTranscript`, `expirationTranscriptText`, and `transcriptText`; only when no transcript text is present does it use audio. If both audio forms are sent, `expirationAudioS3Uri` takes priority over `expirationAudioBase64`.
+
 ## Flow 1: Register User
 
 Call the backend signup route:
+
+Show the password policy on the signup form:
+
+```text
+Minimum length: 8
+Requires uppercase: yes
+Requires lowercase: yes
+Requires number: yes
+Requires symbol: no
+```
+
+A safe test password example is `TestPassword123`.
 
 ```ts
 await apiJson("/auth/signup", {
@@ -187,7 +224,7 @@ await apiJson("/auth/signup", {
 });
 ```
 
-Then show a confirmation-code form.
+Then show a confirmation-code form and tell the user to check their email inbox. During testing, the Cognito confirmation email often lands in the spam/junk folder, so the UI should mention checking spam if the code does not arrive.
 
 Confirm directly with Cognito:
 
@@ -368,6 +405,9 @@ const result = await apiJson("/expiration/parse", {
 Use `result.expiration.expirationDate` to fill the expiration date input.
 
 The backend supports Chinese speech/text such as `兩個月後`, as well as English such as `two months later`.
+For reliable tests, use explicit duration phrases like `三天後`, `兩週後`, and `一個月後`. Do not use vague phrases like `明天`, `下週`, or `下個月`.
+
+If a request includes both transcript text and audio, the transcript text wins and the audio is ignored. If both `expirationAudioS3Uri` and `expirationAudioBase64` are sent without transcript text, the S3 URI wins.
 
 ## Flow 7: Add Food With Expiration Audio
 
@@ -392,6 +432,7 @@ await apiJson("/foods/put", {
 ```
 
 The backend will parse the expiration date and store the resulting `expirationDate`.
+If `expirationDate` is also sent together with transcript or audio input, the parsed date from transcript/audio takes priority.
 
 ## Flow 8: Show My Fridge Inventory
 
@@ -463,11 +504,19 @@ The real retrieve-food user flow should be:
 1. User taps a retrieve/open button.
 2. Camera captures the user's face.
 3. Frontend calls `POST /auth/face` with `action: "retrieve"`.
-4. If face auth succeeds, frontend sends the hardware unlock signal.
-5. Camera captures the removed food image.
-6. Frontend calls `POST /foods/retrieve` with the recognized user's `userId`, recognized user's email, and food image.
+4. Camera captures the food image.
+5. Frontend calls `POST /foods/retrieve` with the recognized user's `userId`, recognized user's email, and food image.
+6. Only if `authorized: true`, frontend sends the hardware unlock signal.
 7. If `authorized: true`, show the returned notification message, for example `Ga took cola`.
 8. If `authorized: false`, trigger or display the reserved hardware alert actions returned by the backend.
+
+Ownership limitation:
+
+- The MVP can verify ownership accurately when retrieval provides a specific `foodId`.
+- If retrieval only provides a food image, the backend can classify the food type and identify the actor, but it cannot prove which physical item was taken when multiple users own the same food type.
+- Example: if A owns a cola and B also owns a cola, and B presents a cola image, the MVP cannot distinguish A's physical cola from B's physical cola.
+- A production-safe flow needs a unique item signal, such as `foodId`, QR code, barcode, RFID tag, shelf/bin position, weight sensor event, or manual item selection.
+- Until that exists, same-food multi-owner cases are a documented limitation.
 
 The backend response may include `hardwareActions` such as:
 
