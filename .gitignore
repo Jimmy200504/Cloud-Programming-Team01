@@ -20,6 +20,7 @@ raspberry-pi/captures/
 raspberry-pi/recordings/
 raspberry-pi/test_*.jpg
 *.wav
+*.jpg
 
 # ============================================================
 #  機密!AWS IoT 憑證與私鑰，絕對不要 commit 到 GitHub
