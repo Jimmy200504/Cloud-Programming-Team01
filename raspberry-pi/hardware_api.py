@@ -41,6 +41,7 @@ import config
 from hardware.lock import Lock
 from hardware.led import LEDControl, StatusLight
 from hardware.dht_sensor import DHTSensor
+from hardware.door_sensor import DoorSensor
 from media.face_camera import FaceCamera
 from media.food_camera import FoodCamera
 from media.microphone import Microphone
@@ -60,6 +61,7 @@ class SmartFridgeHardware:
         self.door_led = LEDControl(config.LED_DOOR_PIN)      # 開鎖燈
         self.record_led = LEDControl(config.LED_RECORD_PIN)  # 錄音燈
         self.dht = DHTSensor()
+        self.door_sensor = DoorSensor()                      # 磁簧開關門感測器
         self.face_camera = FaceCamera()
         self.food_camera = FoodCamera()
         self.microphone = Microphone()
@@ -341,6 +343,7 @@ class SmartFridgeHardware:
         self.door_led.cleanup()
         self.record_led.cleanup()
         self.dht.cleanup()
+        self.door_sensor.cleanup()
         self.mqtt_client.disconnect()
         print("已關閉所有硬體與雲端資源")
 

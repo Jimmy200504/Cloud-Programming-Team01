@@ -85,6 +85,10 @@ def put_flow(fridge):
     fridge.door_led.on()
     _report_lock(fridge, config.SHADOW_LOCK_UNLOCKED)
 
+    # 3b. 等磁簧開關偵測到門被打開
+    hmi_show("已解鎖,請打開冰箱門")
+    fridge.door_sensor.wait_for_open()
+
     # 4. 放食物 → 確認 → 預覽 → 拍好了 → 拍最清楚一張
     hmi_show("請把食物放到拍攝區,完成後按確認")
     hmi_button("確認")
@@ -117,7 +121,9 @@ def put_flow(fridge):
         hmi_show(f"存食物失敗:{resp.get('message', resp)}")
     print("    後端回應:", resp)
 
-    # 7. 上鎖(關門後)、熄開鎖燈 + 回報,狀態燈回待機
+    # 7. 等門關上 → 上鎖、熄開鎖燈 + 回報,狀態燈回待機
+    hmi_show("請關上冰箱門")
+    fridge.door_sensor.wait_for_close()
     fridge.lock.lock()
     fridge.door_led.off()
     _report_lock(fridge, config.SHADOW_LOCK_LOCKED)
@@ -152,6 +158,10 @@ def retrieve_flow(fridge):
     fridge.door_led.on()
     _report_lock(fridge, config.SHADOW_LOCK_UNLOCKED)
 
+    # 3b. 等磁簧開關偵測到門被打開
+    hmi_show("已解鎖,請打開冰箱門")
+    fridge.door_sensor.wait_for_open()
+
     # 4. 放要取的食物 → 確認 → 預覽 → 拍好了 → 拍一張
     hmi_show("請把要取出的食物放到拍攝區,完成後按確認")
     hmi_button("確認")
@@ -178,7 +188,9 @@ def retrieve_flow(fridge):
         hmi_show("(若非物主,雲端會透過 Shadow 下 led=alert,背景 agent 會自動閃燈警示)")
     print("    後端回應:", resp)
 
-    # 7. 上鎖、熄開鎖燈 + 回報,狀態燈回待機
+    # 7. 等門關上 → 上鎖、熄開鎖燈 + 回報,狀態燈回待機
+    hmi_show("請關上冰箱門")
+    fridge.door_sensor.wait_for_close()
     fridge.lock.lock()
     fridge.door_led.off()
     _report_lock(fridge, config.SHADOW_LOCK_LOCKED)
