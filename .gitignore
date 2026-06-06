@@ -37,3 +37,6 @@ raspberry-pi/certs/
 .DS_Store
 .vscode/
 .idea/
+
+# lgpio 產生的通知管線(GPIO 執行時的暫存 FIFO)
+.lgd-nfy*
