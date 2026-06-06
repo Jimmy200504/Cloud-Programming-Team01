@@ -64,22 +64,25 @@ def put_flow(fridge):
     print("\n========== 存食物 ==========")
     face_path, food_path, audio_path = _paths("put")
 
-    # 1. 請看鏡頭 → 相機0 拍人
+    # 1. 請看鏡頭 → 相機0 拍人(狀態燈轉處理中藍)
     hmi_show("請看鏡頭")
+    fridge.status_light.processing()
     time.sleep(2)
     fridge.face_camera.capture(face_path)
 
     # 2. 人臉認證
     auth = fridge.cloud.auth_face(face_path, action="put")
     if not auth.get("authenticated"):
+        fridge.status_light.error()
         hmi_show(f"認證失敗,無法存食物。({auth.get('message', '')})")
+        fridge.status_light.idle()
         return
     user = auth.get("user", {})
     hmi_show(f"歡迎 {user.get('displayName') or user.get('email')}")
 
-    # 3. 開鎖(亮燈提示)+ 回報鎖狀態
+    # 3. 開鎖(亮開鎖燈)+ 回報鎖狀態
     fridge.lock.unlock()
-    fridge.led.on()
+    fridge.door_led.on()
     _report_lock(fridge, config.SHADOW_LOCK_UNLOCKED)
 
     # 4. 放食物 → 確認 → 預覽 → 拍好了 → 拍最清楚一張
@@ -89,11 +92,13 @@ def put_flow(fridge):
     hmi_button("拍好了")
     fridge.food_camera.capture_sharpest(food_path, num_frames=5)
 
-    # 5. 說到期日 → 錄音 → 錄好了
+    # 5. 說到期日 → 錄音(亮錄音燈提示說話)→ 錄好了
     hmi_show("請說出到期日(例如:三個月後),說完按「錄好了」")
+    fridge.record_led.on()
     fridge.microphone.start()
     hmi_button("錄好了")
     fridge.microphone.stop(audio_path)
+    fridge.record_led.off()
 
     # 6. 上傳 /foods/put
     hmi_show("上傳中,請稍候…")
@@ -105,15 +110,18 @@ def put_flow(fridge):
         audio_path=audio_path,
     )
     if resp.get("success", True) and not resp.get("errorCode"):
+        fridge.status_light.success()
         hmi_show("存食物完成!")
     else:
+        fridge.status_light.error()
         hmi_show(f"存食物失敗:{resp.get('message', resp)}")
     print("    後端回應:", resp)
 
-    # 7. 上鎖(關門後)+ 回報
+    # 7. 上鎖(關門後)、熄開鎖燈 + 回報,狀態燈回待機
     fridge.lock.lock()
-    fridge.led.off()
+    fridge.door_led.off()
     _report_lock(fridge, config.SHADOW_LOCK_LOCKED)
+    fridge.status_light.idle()
 
 
 # ============================================================
@@ -123,21 +131,25 @@ def retrieve_flow(fridge):
     print("\n========== 取食物 ==========")
     face_path, food_path, _ = _paths("get")
 
-    # 1. 請看鏡頭 → 相機0 拍人
+    # 1. 請看鏡頭 → 相機0 拍人(狀態燈轉處理中藍)
     hmi_show("請看鏡頭")
+    fridge.status_light.processing()
     time.sleep(2)
     fridge.face_camera.capture(face_path)
 
     # 2. 人臉認證
     auth = fridge.cloud.auth_face(face_path, action="retrieve")
     if not auth.get("authenticated"):
+        fridge.status_light.error()
         hmi_show(f"認證失敗,無法取食物。({auth.get('message', '')})")
+        fridge.status_light.idle()
         return
     user = auth.get("user", {})
     hmi_show(f"歡迎 {user.get('displayName') or user.get('email')}")
 
-    # 3. 開鎖 + 回報
+    # 3. 開鎖(亮開鎖燈)+ 回報
     fridge.lock.unlock()
+    fridge.door_led.on()
     _report_lock(fridge, config.SHADOW_LOCK_UNLOCKED)
 
     # 4. 放要取的食物 → 確認 → 預覽 → 拍好了 → 拍一張
@@ -158,15 +170,19 @@ def retrieve_flow(fridge):
 
     # 6. authorized=true 才允許取出
     if resp.get("authorized"):
+        fridge.status_light.success()
         hmi_show(f"允許取出:{resp.get('message', '')}")
     else:
+        fridge.status_light.error()
         hmi_show(f"不允許取出:{resp.get('message', '')}")
         hmi_show("(若非物主,雲端會透過 Shadow 下 led=alert,背景 agent 會自動閃燈警示)")
     print("    後端回應:", resp)
 
-    # 7. 上鎖 + 回報
+    # 7. 上鎖、熄開鎖燈 + 回報,狀態燈回待機
     fridge.lock.lock()
+    fridge.door_led.off()
     _report_lock(fridge, config.SHADOW_LOCK_LOCKED)
+    fridge.status_light.idle()
 
 
 # ============================================================

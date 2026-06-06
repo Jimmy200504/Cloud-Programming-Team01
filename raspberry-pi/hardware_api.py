@@ -39,7 +39,7 @@ if _THIS_DIR not in sys.path:
 
 import config
 from hardware.lock import Lock
-from hardware.led import LEDControl
+from hardware.led import LEDControl, StatusLight
 from hardware.dht_sensor import DHTSensor
 from media.face_camera import FaceCamera
 from media.food_camera import FoodCamera
@@ -55,7 +55,10 @@ class SmartFridgeHardware:
     def __init__(self):
         # ---- 底層硬體 / 影音模組 ----
         self.lock = Lock()
-        self.led = LEDControl()
+        self.status_light = StatusLight()                    # RGB 主狀態燈
+        self.power_led = LEDControl(config.LED_POWER_PIN)    # 電源/連線燈
+        self.door_led = LEDControl(config.LED_DOOR_PIN)      # 開鎖燈
+        self.record_led = LEDControl(config.LED_RECORD_PIN)  # 錄音燈
         self.dht = DHTSensor()
         self.face_camera = FaceCamera()
         self.food_camera = FoodCamera()
@@ -102,6 +105,9 @@ class SmartFridgeHardware:
         # 上線時回報目前狀態(預設上鎖、LED 關)
         self.shadow_manager.report_lock(config.SHADOW_LOCK_LOCKED)
         self.shadow_manager.report_led(config.SHADOW_LED_OFF)
+        # 連線成功:點亮電源/連線燈、狀態燈轉待機綠
+        self.power_led.on()
+        self.status_light.idle()
         print("雲端連線完成,已開始監聽 lock / led 指令")
 
     # ========================================================
@@ -137,7 +143,7 @@ class SmartFridgeHardware:
         self._led_alert_active = True
 
         def _flow():
-            self.led.blink(on_time=0.3, off_time=0.3)   # 非阻塞閃爍
+            self.status_light.alert()                   # RGB 紅燈閃爍(非阻塞)
             if self.shadow_manager is not None:
                 self.shadow_manager.report_led(config.SHADOW_LED_ALERT)
             # 持續警示一段時間(可被 _stop_led_alert 提早結束)
@@ -145,7 +151,7 @@ class SmartFridgeHardware:
                 if not self._led_alert_active:
                     break
                 time.sleep(1)
-            self.led.off()
+            self.status_light.idle()                    # 回到待機綠
             self._led_alert_active = False
             # 警示結束:回報 off,並把 desired.led 一併設 off 以清掉 delta
             if self.shadow_manager is not None:
@@ -157,7 +163,7 @@ class SmartFridgeHardware:
     def _stop_led_alert(self):
         """提早結束 LED 警示。"""
         self._led_alert_active = False
-        self.led.off()
+        self.status_light.idle()
         if self.shadow_manager is not None:
             self.shadow_manager.report_led(config.SHADOW_LED_OFF, clear_desired=True)
 
@@ -186,9 +192,9 @@ class SmartFridgeHardware:
                         return
                     user = auth.get("user", {})
 
-                    # 4 開鎖、亮燈
+                    # 4 開鎖、亮開鎖燈
                     self.lock.unlock()
-                    self.led.on()
+                    self.door_led.on()
                     self._report_lock(config.SHADOW_LOCK_UNLOCKED)
 
                     # 5~6 拍食物、錄音
@@ -205,9 +211,9 @@ class SmartFridgeHardware:
                         audio_path=audio_path,
                     )
 
-                    # 8 上鎖、熄燈
+                    # 8 上鎖、熄開鎖燈
                     self.lock.lock()
-                    self.led.off()
+                    self.door_led.off()
                     self._report_lock(config.SHADOW_LOCK_LOCKED)
 
                     result = {"status": "ok", "user": user, "food_result": food_result}
@@ -215,7 +221,7 @@ class SmartFridgeHardware:
                     print(f"放食物流程發生錯誤: {err}")
                     # 發生例外仍確保上鎖、熄燈
                     self.lock.lock()
-                    self.led.off()
+                    self.door_led.off()
                     result = {"status": "error", "error": str(err)}
                 finally:
                     print(f"放食物流程結束: {result}")
@@ -330,7 +336,10 @@ class SmartFridgeHardware:
         self.stop_telemetry_loop()
         self._led_alert_active = False
         self.lock.cleanup()
-        self.led.cleanup()
+        self.status_light.cleanup()
+        self.power_led.cleanup()
+        self.door_led.cleanup()
+        self.record_led.cleanup()
         self.dht.cleanup()
         self.mqtt_client.disconnect()
         print("已關閉所有硬體與雲端資源")
