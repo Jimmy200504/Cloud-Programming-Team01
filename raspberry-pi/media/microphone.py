@@ -29,6 +29,9 @@ class Microphone:
         """
         self.sample_rate = sample_rate
         self.channels = channels
+        # 串流錄音用狀態(start/stop 變動長度錄音,配合 HMI「說完按錄好了」)
+        self._stream = None
+        self._frames = []
 
     def record(self, save_path: str,
                duration: int = config.AUDIO_DURATION_SECONDS) -> str:
@@ -68,3 +71,50 @@ class Microphone:
         except Exception as err:
             print(f"錄音失敗: {err}")
             return None
+
+    # ------------------------------------------------------------
+    #  變動長度錄音(配合 HMI:開始說話 → 按「錄好了」才停)
+    # ------------------------------------------------------------
+    def start(self):
+        """開始串流錄音(不限長度)，之後用 stop() 結束並存檔。"""
+        if config.MOCK_MODE:
+            print("[Mock] 開始錄音…")
+            return
+        self._frames = []
+
+        def _callback(indata, frames, time_info, status):
+            # 持續把麥克風進來的音框收集起來
+            self._frames.append(indata.copy())
+
+        self._stream = sd.InputStream(
+            samplerate=self.sample_rate, channels=self.channels,
+            dtype="int16", callback=_callback)
+        self._stream.start()
+
+    def stop(self, save_path: str) -> str:
+        """結束串流錄音並存成 .wav，回傳存檔路徑。"""
+        if config.MOCK_MODE:
+            print(f"[Mock] 結束錄音 → {save_path}")
+            return save_path
+        if self._stream is None:
+            print("尚未開始錄音(請先呼叫 start())")
+            return None
+
+        self._stream.stop()
+        self._stream.close()
+        self._stream = None
+
+        if self._frames:
+            data = np.concatenate(self._frames, axis=0)
+        else:
+            data = np.zeros((0, self.channels), dtype="int16")
+
+        with wave.open(save_path, "wb") as wf:
+            wf.setnchannels(self.channels)
+            wf.setsampwidth(2)            # int16 = 2 bytes
+            wf.setframerate(self.sample_rate)
+            wf.writeframes(data.tobytes())
+
+        secs = len(data) / self.sample_rate if len(data) else 0
+        print(f"錄音結束({secs:.1f} 秒)→ {save_path}")
+        return save_path

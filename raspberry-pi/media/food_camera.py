@@ -13,13 +13,15 @@ Picamera2 函式庫拍照，而非 OpenCV 的 VideoCapture。
 拍完一樣會 stop()/close() 立即釋放相機資源。
 """
 
+import os
 import time
 import config
 
-# 只有在實機模式才匯入 Picamera2 (需 Raspberry Pi + libcamera 環境)，
+# 只有在實機模式才匯入 Picamera2 / cv2 (需 Raspberry Pi + libcamera 環境)，
 # 一般電腦跑模擬模式時不會因缺套件而崩潰。
 if not config.MOCK_MODE:
     from picamera2 import Picamera2
+    import cv2
 
 
 class FoodCamera:
@@ -73,6 +75,63 @@ class FoodCamera:
 
         finally:
             # 不論成功與否，務必停止並關閉相機以釋放資源
+            try:
+                picam2.stop()
+            except Exception:
+                pass
+            picam2.close()
+
+    def capture_sharpest(self, save_path: str, num_frames: int = 5) -> str:
+        """
+        連拍 num_frames 張，挑「最清楚」的一張存檔。
+        清晰度用 Laplacian 變異數衡量(數值越大越清楚),可避免手晃/對焦未穩拍到糊的。
+
+        :param save_path:  最終存檔路徑
+        :param num_frames: 連拍張數
+        :return: 存檔路徑;失敗回傳 None
+        """
+        if config.MOCK_MODE:
+            print(f"[Mock] 食物相機連拍 {num_frames} 張挑最清楚 → {save_path}")
+            return save_path
+
+        picam2 = Picamera2(camera_num=self.camera_num)
+        candidates = []
+        try:
+            picam2.configure(picam2.create_still_configuration(
+                main={"size": tuple(self.resolution)}))
+            picam2.start()
+            time.sleep(self.warmup_seconds)
+
+            best_path, best_score = None, -1.0
+            for i in range(num_frames):
+                cand = f"{save_path}.cand{i}.jpg"
+                picam2.capture_file(cand)
+                candidates.append(cand)
+                # 清晰度:轉灰階後取 Laplacian 的變異數
+                img = cv2.imread(cand)
+                score = cv2.Laplacian(
+                    cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var()
+                print(f"    候選 {i + 1}/{num_frames} 清晰度={score:.0f}")
+                if score > best_score:
+                    best_score, best_path = score, cand
+                time.sleep(0.1)
+
+            # 保留最清楚那張(改名為 save_path)，刪掉其餘候選
+            for c in candidates:
+                if c != best_path and os.path.exists(c):
+                    os.remove(c)
+            os.replace(best_path, save_path)
+            print(f"食物相機挑最清楚(清晰度={best_score:.0f})→ {save_path}")
+            return save_path
+
+        except Exception as err:
+            print(f"食物相機連拍失敗: {err}")
+            for c in candidates:
+                if os.path.exists(c):
+                    os.remove(c)
+            return None
+
+        finally:
             try:
                 picam2.stop()
             except Exception:
