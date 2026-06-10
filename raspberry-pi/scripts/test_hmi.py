@@ -36,10 +36,12 @@ def main():
 
     hmi = HMI(mock=False)
     try:
-        hmi.hide_flow_buttons()
         hmi.show_status("HMI test ready")
         time.sleep(0.5)
         hmi.show_status("請按任一按鈕")
+        time.sleep(0.5)
+        print("Sending direct command: vis b_confirm,1")
+        hmi.send_command("vis b_confirm,1")
 
         while True:
             event = hmi.wait_event(timeout=1)

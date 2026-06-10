@@ -36,6 +36,15 @@ def debug(msg):
     print(f"[{time.strftime('%H:%M:%S')}] [main] {msg}", flush=True)
 
 
+def wait_hmi_button(name):
+    hmi = get_default_hmi()
+    debug(f"顯示 HMI 按鈕: {name}")
+    hmi.show_button(name)
+    debug(f"等待 HMI 按鈕: {name}")
+    hmi_button(name)
+    debug(f"收到 HMI 按鈕: {name}")
+
+
 def _paths(prefix):
     ts = time.strftime("%Y%m%d_%H%M%S")
     return (
@@ -101,13 +110,9 @@ def put_flow(fridge):
 
     # 4. 放食物 → 確認 → 預覽 → 拍好了 → 拍最清楚一張
     hmi_show("請把食物放到拍攝區,完成後按確認")
-    debug("等待 HMI 按鈕: 確認")
-    hmi_button("確認")
-    debug("收到 HMI 按鈕: 確認")
+    wait_hmi_button("確認")
     hmi_show("相機 1 即時預覽中(HMI 會顯示畫面),調整好後按「拍好了」")
-    debug("等待 HMI 按鈕: 拍好了")
-    hmi_button("拍好了")
-    debug("收到 HMI 按鈕: 拍好了")
+    wait_hmi_button("拍好了")
     debug("食物相機連拍挑最清楚開始")
     fridge.food_camera.capture_sharpest(food_path, num_frames=5)
     debug(f"食物相機拍照完成: {food_path}")
@@ -117,9 +122,8 @@ def put_flow(fridge):
     debug("錄音燈開啟,開始錄音")
     fridge.record_led.on()
     fridge.microphone.start()
-    debug("等待 HMI 按鈕: 錄好了")
-    hmi_button("錄好了")
-    debug("收到 HMI 按鈕: 錄好了,停止錄音")
+    wait_hmi_button("錄好了")
+    debug("停止錄音")
     fridge.microphone.stop(audio_path)
     fridge.record_led.off()
     debug(f"錄音完成: {audio_path}")
@@ -204,13 +208,9 @@ def retrieve_flow(fridge):
 
     # 4. 放要取的食物 → 確認 → 預覽 → 拍好了 → 拍一張
     hmi_show("請把要取出的食物放到拍攝區,完成後按確認")
-    debug("等待 HMI 按鈕: 確認")
-    hmi_button("確認")
-    debug("收到 HMI 按鈕: 確認")
+    wait_hmi_button("確認")
     hmi_show("相機 1 即時預覽中(HMI 會顯示畫面),調整好後按「拍好了」")
-    debug("等待 HMI 按鈕: 拍好了")
-    hmi_button("拍好了")
-    debug("收到 HMI 按鈕: 拍好了")
+    wait_hmi_button("拍好了")
     debug("食物相機拍照開始")
     fridge.food_camera.capture(food_path)
     debug(f"食物相機拍照完成: {food_path}")
@@ -258,8 +258,7 @@ def run_hmi(fridge):
     hmi = get_default_hmi()
     debug("HMI 主迴圈啟動")
     while True:
-        debug("隱藏流程按鈕,顯示主選單")
-        hmi.hide_flow_buttons()
+        debug("顯示主選單")
         hmi_show("請選擇: 存食物 / 取食物")
         debug("等待 HMI 主選單按鈕: Put / Get")
         choice = hmi.wait_menu_choice()
