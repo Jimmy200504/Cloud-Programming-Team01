@@ -178,8 +178,12 @@ h3 {
 
 .header-copy h1 {
   margin-top: 2px;
-  font-size: clamp(34px, 7vw, 72px);
-  line-height: 0.92;
+  max-width: 22ch;
+  font-size: clamp(28px, 4.5vw, 52px);
+  line-height: 1.02;
+  overflow-wrap: normal;
+  word-break: normal;
+  text-wrap: balance;
 }
 
 .header-copy span {
@@ -251,6 +255,10 @@ h3 {
 
 .flow-panel {
   min-height: 560px;
+}
+
+.device-panel {
+  align-self: stretch;
 }
 
 .section-heading {
@@ -536,6 +544,53 @@ h3 {
   text-align: center;
 }
 
+.compact-empty {
+  min-height: 112px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric-card {
+  min-width: 0;
+  min-height: 96px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  color: var(--accent-2);
+  background:
+    linear-gradient(135deg, rgba(111, 200, 255, 0.1), transparent 58%),
+    rgba(4, 12, 10, 0.38);
+}
+
+.metric-card span,
+.metric-card strong {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.metric-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.metric-card strong {
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
 .console-window {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -583,12 +638,17 @@ h3 {
   }
 
   .inventory-panel,
+  .device-panel,
   .console-panel {
     grid-column: 1 / -1;
   }
 
   .home-grid .inventory-panel {
     grid-column: auto;
+  }
+
+  .home-grid .device-panel {
+    grid-column: 1 / -1;
   }
 
   .auth-panel,
@@ -606,6 +666,11 @@ h3 {
   .command-header {
     grid-template-columns: 1fr;
     min-height: auto;
+  }
+
+  .header-copy h1 {
+    max-width: 100%;
+    font-size: clamp(24px, 8vw, 36px);
   }
 
   .brand-mark {
@@ -627,6 +692,8 @@ h3 {
 
   .inventory-panel,
   .home-grid .inventory-panel,
+  .device-panel,
+  .home-grid .device-panel,
   .console-panel,
   .wide-field,
   .flow-form button[type="submit"] {
@@ -639,5 +706,9 @@ h3 {
 
   .food-image {
     width: 92px;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr;
   }
 }

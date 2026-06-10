@@ -10,7 +10,7 @@ export default function CommandHeader({ session, onSignOut }) {
       </div>
       <div className="header-copy">
         <p className="eyebrow">Smart Fridge</p>
-        <h1>Command Center</h1>
+        <h1>FreshGuarGaurdilo's Stomach</h1>
       </div>
       <div className="header-status">
         {session.idToken && (

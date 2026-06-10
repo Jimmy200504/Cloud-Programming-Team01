@@ -22,6 +22,12 @@ export function listMyFoods(token) {
   });
 }
 
+export function getDeviceState(token) {
+  return apiJson(`/device/${config.defaultDeviceId}/state`, {
+    token
+  });
+}
+
 export function authenticateFace({ action, imageContentType, faceImageBase64 }) {
   return apiJson("/auth/face", {
     method: "POST",
