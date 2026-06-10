@@ -2,59 +2,77 @@
 """
 電子鎖控制模組 (lock.py)
 ============================================================
-提供 `Lock` 類別，採「高電位觸發解鎖」的方式控制電子鎖。
+以 SG90 伺服馬達當作門鎖:轉到不同角度代表「上鎖 / 解鎖」。
 
-接線假設：
-  GPIO(LOCK_PIN) ── 控制 MOSFET / 繼電器 ── 電子鎖
-  輸出「高電位」→ 通電 → 解鎖
-  輸出「低電位」→ 斷電 → 上鎖 (預設安全狀態)
+  解鎖 → 轉到 LOCK_UNLOCKED_ANGLE
+  上鎖 → 轉到 LOCK_LOCKED_ANGLE
+
+轉到定位後會 detach(停止送 PWM),避免 SG90 持續抖動/嗡嗡叫;
+鎖舌靠機構停在原位。介面 unlock()/lock() 與舊版相同,上層不需改動。
 """
 
+import time
 import config
 
-# 只有在「實機模式」才匯入 gpiozero。
-# 這樣在一般電腦 (未安裝 gpiozero) 跑模擬模式時，import 不會失敗。
+# 只有在實機模式才匯入 gpiozero,避免一般電腦缺套件而崩潰。
 if not config.MOCK_MODE:
-    from gpiozero import OutputDevice
+    from gpiozero import AngularServo
+
+# SG90 全行程脈寬(讓 0~180° 對應正確;gpiozero 預設只給約 90°)
+_MIN_PULSE_WIDTH = 0.0005   # 0.5 ms
+_MAX_PULSE_WIDTH = 0.0025   # 2.5 ms
 
 
 class Lock:
-    """電子鎖控制類別 (高電位觸發解鎖)。"""
+    """SG90 伺服馬達門鎖。"""
 
-    def __init__(self, pin: int = config.LOCK_PIN):
+    def __init__(self, pin: int = config.LOCK_PIN,
+                 locked_angle: float = config.LOCK_LOCKED_ANGLE,
+                 unlocked_angle: float = config.LOCK_UNLOCKED_ANGLE):
         """
-        :param pin: 控制電子鎖的 GPIO 腳位 (BCM 編號)
+        :param pin:            伺服馬達訊號腳位 (BCM 編號)
+        :param locked_angle:   上鎖角度
+        :param unlocked_angle: 解鎖角度
         """
         self.pin = pin
+        self.locked_angle = locked_angle
+        self.unlocked_angle = unlocked_angle
 
         if config.MOCK_MODE:
-            # 模擬模式：不建立任何實體裝置
-            self._device = None
+            self._servo = None
         else:
-            # active_high=True   → 呼叫 on() 時輸出高電位 (= 解鎖)
-            # initial_value=False → 初始輸出低電位 (= 上鎖，較安全)
-            self._device = OutputDevice(
-                pin, active_high=True, initial_value=False
+            self._servo = AngularServo(
+                pin, min_angle=0, max_angle=180,
+                min_pulse_width=_MIN_PULSE_WIDTH,
+                max_pulse_width=_MAX_PULSE_WIDTH,
             )
+            # 啟動時先轉到上鎖位置(安全預設)
+            self._move(self.locked_angle)
+
+    def _move(self, angle: float):
+        """轉到指定角度,稍待到位後 detach 以停止抖動。"""
+        self._servo.angle = angle
+        time.sleep(0.5)
+        self._servo.detach()
 
     def unlock(self):
-        """解鎖：輸出高電位。"""
+        """解鎖:轉到解鎖角度。"""
         if config.MOCK_MODE:
-            print(f"[Mock] 鎖已開啟 (PIN {self.pin} 輸出高電位)")
+            print(f"[Mock] 鎖已開啟 (伺服馬達轉到 {self.unlocked_angle}°)")
             return
-        self._device.on()
+        self._move(self.unlocked_angle)
 
     def lock(self):
-        """上鎖：輸出低電位。"""
+        """上鎖:轉到上鎖角度。"""
         if config.MOCK_MODE:
-            print(f"[Mock] 鎖已關閉 (PIN {self.pin} 輸出低電位)")
+            print(f"[Mock] 鎖已關閉 (伺服馬達轉到 {self.locked_angle}°)")
             return
-        self._device.off()
+        self._move(self.locked_angle)
 
     def cleanup(self):
         """釋放 GPIO 資源 (程式結束時呼叫)。"""
         if config.MOCK_MODE:
             print("[Mock] 釋放電子鎖 GPIO 資源")
             return
-        if self._device is not None:
-            self._device.close()
+        if self._servo is not None:
+            self._servo.close()
