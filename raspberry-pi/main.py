@@ -62,14 +62,19 @@ def put_flow(fridge):
     face_path, food_path, audio_path = _paths("put")
     debug(f"存食物流程開始 face={face_path}, food={food_path}, audio={audio_path}")
 
-    # 1. 請看鏡頭 → 相機0 拍人(狀態燈轉處理中藍)
+    # 1. 請看鏡頭 → 偵測到人臉才拍(狀態燈轉處理中藍)
     debug("HMI 顯示: 請看鏡頭")
     hmi_show("請看鏡頭")
     debug("狀態燈: processing")
     fridge.status_light.processing()
-    time.sleep(2)
-    debug("人臉相機拍照開始")
-    fridge.face_camera.capture(face_path)
+    debug("等待偵測到人臉並拍照")
+    if fridge.face_camera.capture_when_face(face_path) is None:
+        debug("逾時未偵測到人臉,中止流程")
+        fridge.status_light.error()
+        fridge.buzzer.beep_error()
+        hmi_show("未偵測到人臉,請對準鏡頭後再試一次。")
+        fridge.status_light.idle()
+        return
     debug(f"人臉相機拍照完成: {face_path}")
 
     # 2. 人臉認證
@@ -165,14 +170,19 @@ def retrieve_flow(fridge):
     face_path, food_path, _ = _paths("get")
     debug(f"取食物流程開始 face={face_path}, food={food_path}")
 
-    # 1. 請看鏡頭 → 相機0 拍人(狀態燈轉處理中藍)
+    # 1. 請看鏡頭 → 偵測到人臉才拍(狀態燈轉處理中藍)
     debug("HMI 顯示: 請看鏡頭")
     hmi_show("請看鏡頭")
     debug("狀態燈: processing")
     fridge.status_light.processing()
-    time.sleep(2)
-    debug("人臉相機拍照開始")
-    fridge.face_camera.capture(face_path)
+    debug("等待偵測到人臉並拍照")
+    if fridge.face_camera.capture_when_face(face_path) is None:
+        debug("逾時未偵測到人臉,中止流程")
+        fridge.status_light.error()
+        fridge.buzzer.beep_error()
+        hmi_show("未偵測到人臉,請對準鏡頭後再試一次。")
+        fridge.status_light.idle()
+        return
     debug(f"人臉相機拍照完成: {face_path}")
 
     # 2. 人臉認證
