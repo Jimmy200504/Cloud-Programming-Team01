@@ -7,9 +7,7 @@ Display design contract:
       Put button -> printh 01
       Get button -> printh 02
   - Flow buttons:
-      確認(b_confirm)  -> printh 11
-      拍好了(b_photo)  -> printh 12
-      錄好了(b_record) -> printh 13
+      Confirm button (b_confirm) -> printh 13
   - Status text component:
       t_status
 
@@ -52,9 +50,7 @@ class HMIEvent:
 class HMIEvents:
     PUT = HMIEvent(0x01, "put")
     GET = HMIEvent(0x02, "get")
-    CONFIRM = HMIEvent(0x11, "confirm")
-    PHOTO_DONE = HMIEvent(0x12, "photo_done")
-    RECORD_DONE = HMIEvent(0x13, "record_done")
+    CONFIRM = HMIEvent(0x13, "confirm")
 
 
 EVENTS_BY_CODE = {
@@ -63,8 +59,6 @@ EVENTS_BY_CODE = {
         HMIEvents.PUT,
         HMIEvents.GET,
         HMIEvents.CONFIRM,
-        HMIEvents.PHOTO_DONE,
-        HMIEvents.RECORD_DONE,
     )
 }
 
@@ -72,20 +66,22 @@ BUTTON_EVENTS = {
     "put": HMIEvents.PUT,
     "get": HMIEvents.GET,
     "confirm": HMIEvents.CONFIRM,
-    "photo_done": HMIEvents.PHOTO_DONE,
-    "record_done": HMIEvents.RECORD_DONE,
+    "b_confirm": HMIEvents.CONFIRM,
     "確認": HMIEvents.CONFIRM,
-    "拍好了": HMIEvents.PHOTO_DONE,
-    "錄好了": HMIEvents.RECORD_DONE,
+    "photo_done": HMIEvents.CONFIRM,
+    "record_done": HMIEvents.CONFIRM,
+    "拍好了": HMIEvents.CONFIRM,
+    "錄好了": HMIEvents.CONFIRM,
 }
 
 FLOW_BUTTON_COMPONENTS = {
     "confirm": "b_confirm",
-    "photo_done": "b_photo",
-    "record_done": "b_record",
+    "b_confirm": "b_confirm",
     "確認": "b_confirm",
-    "拍好了": "b_photo",
-    "錄好了": "b_record",
+    "photo_done": "b_confirm",
+    "record_done": "b_confirm",
+    "拍好了": "b_confirm",
+    "錄好了": "b_confirm",
 }
 
 
@@ -208,7 +204,7 @@ class HMI:
         self.set_visible(FLOW_BUTTON_COMPONENTS[name], False)
 
     def hide_flow_buttons(self):
-        """Hide 確認 / 拍好了 / 錄好了 buttons."""
+        """Hide the flow confirm button."""
         for component in sorted(set(FLOW_BUTTON_COMPONENTS.values())):
             self.set_visible(component, False)
 
@@ -324,7 +320,7 @@ class HMI:
     def _wait_mock_event(self, timeout: Optional[float]) -> Optional[HMIEvent]:
         prompt = (
             "[Mock HMI] press: "
-            "1=put, 2=get, 11=confirm, 12=photo_done, 13=record_done, q=timeout/quit: "
+            "1=put, 2=get, 13=confirm, q=timeout/quit: "
         )
         raw = input(prompt).strip().lower()
         if raw in ("", "q"):

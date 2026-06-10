@@ -10,9 +10,7 @@ Run on the Raspberry Pi:
 Expected HMI button events:
     Put      -> printh 01
     Get      -> printh 02
-    確認     -> printh 11
-    拍好了   -> printh 12
-    錄好了   -> printh 13
+    b_confirm -> printh 13
 """
 
 import os
@@ -55,11 +53,7 @@ def main():
             elif event == HMIEvents.GET:
                 hmi.show_status("Get pressed")
             elif event == HMIEvents.CONFIRM:
-                hmi.show_status("確認 pressed")
-            elif event == HMIEvents.PHOTO_DONE:
-                hmi.show_status("拍好了 pressed")
-            elif event == HMIEvents.RECORD_DONE:
-                hmi.show_status("錄好了 pressed")
+                hmi.show_status("b_confirm pressed")
     except KeyboardInterrupt:
         print("\nStopping HMI test.")
     finally:

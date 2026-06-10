@@ -57,8 +57,11 @@ HMI_BAUDRATE = 9600
 # ============================================================
 #  影音設備
 # ============================================================
-# 人臉相機:USB 視訊裝置 (Logitech)，走 OpenCV V4L2，以 index 指定
-FACE_CAM_INDEX = 0
+# 人臉相機:USB 視訊裝置 (Logitech C920)，走 OpenCV V4L2，以 index 指定。
+# `v4l2-ctl --list-devices` 顯示 C920 在 /dev/video1 與 /dev/video2；
+# 一般第一個節點是可擷取影像的 video device。
+FACE_CAM_INDEX = 1
+FACE_CAM_RESOLUTION = (640, 480)
 
 # 食物相機:Raspberry Pi CSI 相機 (IMX219 / Camera v2.1)，走 libcamera，
 # 使用 Picamera2 函式庫 (不是 OpenCV)。以下為 libcamera 列舉的相機編號，

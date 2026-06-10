@@ -37,12 +37,14 @@ def debug(msg):
 
 
 def wait_hmi_button(name):
-    hmi = get_default_hmi()
-    debug(f"顯示 HMI 按鈕: {name}")
-    hmi.show_button(name)
     debug(f"等待 HMI 按鈕: {name}")
     hmi_button(name)
     debug(f"收到 HMI 按鈕: {name}")
+
+
+def return_hmi_to_page0():
+    debug("HMI 回到 page0")
+    get_default_hmi().send_command("page page0")
 
 
 def _paths(prefix):
@@ -96,6 +98,8 @@ def put_flow(fridge):
     debug(f"人臉認證成功 user={user}")
     hmi_show(f"歡迎 {user.get('displayName') or user.get('email')}")
 
+    wait_hmi_button("b_confirm")
+
     # 3. 開鎖(亮開鎖燈)+ 回報鎖狀態
     debug("開鎖並打開門燈")
     fridge.lock.unlock()
@@ -108,21 +112,18 @@ def put_flow(fridge):
     fridge.door_sensor.wait_for_open()
     debug("門已打開")
 
-    # 4. 放食物 → 確認 → 預覽 → 拍好了 → 拍最清楚一張
+    # 4. 放食物 → 確認 → 預覽 → 確認 → 拍最清楚一張
     hmi_show("請把食物放到拍攝區,完成後按確認")
-    wait_hmi_button("確認")
-    hmi_show("相機 1 即時預覽中(HMI 會顯示畫面),調整好後按「拍好了」")
-    wait_hmi_button("拍好了")
-    debug("食物相機連拍挑最清楚開始")
+    wait_hmi_button("b_confirm")
     fridge.food_camera.capture_sharpest(food_path, num_frames=5)
     debug(f"食物相機拍照完成: {food_path}")
 
-    # 5. 說到期日 → 錄音(亮錄音燈提示說話)→ 錄好了
-    hmi_show("請說出到期日(例如:三個月後),說完按「錄好了」")
+    # 5. 說到期日 → 錄音(亮錄音燈提示說話)→ 確認
+    hmi_show("請說出到期日(例如:三個月後),說完按確認")
     debug("錄音燈開啟,開始錄音")
     fridge.record_led.on()
     fridge.microphone.start()
-    wait_hmi_button("錄好了")
+    wait_hmi_button("b_confirm")
     debug("停止錄音")
     fridge.microphone.stop(audio_path)
     fridge.record_led.off()
@@ -206,11 +207,11 @@ def retrieve_flow(fridge):
     fridge.door_sensor.wait_for_open()
     debug("門已打開")
 
-    # 4. 放要取的食物 → 確認 → 預覽 → 拍好了 → 拍一張
+    # 4. 放要取的食物 → 確認 → 預覽 → 確認 → 拍一張
     hmi_show("請把要取出的食物放到拍攝區,完成後按確認")
-    wait_hmi_button("確認")
-    hmi_show("相機 1 即時預覽中(HMI 會顯示畫面),調整好後按「拍好了」")
-    wait_hmi_button("拍好了")
+    wait_hmi_button("b_confirm")
+    hmi_show("相機 1 即時預覽中(HMI 會顯示畫面),調整好後按確認")
+    wait_hmi_button("b_confirm")
     debug("食物相機拍照開始")
     fridge.food_camera.capture(food_path)
     debug(f"食物相機拍照完成: {food_path}")
@@ -264,9 +265,15 @@ def run_hmi(fridge):
         choice = hmi.wait_menu_choice()
         debug(f"HMI 主選單收到: {choice}")
         if choice == "put":
-            put_flow(fridge)
+            try:
+                put_flow(fridge)
+            finally:
+                return_hmi_to_page0()
         elif choice == "get":
-            retrieve_flow(fridge)
+            try:
+                retrieve_flow(fridge)
+            finally:
+                return_hmi_to_page0()
         elif choice is None and config.MOCK_MODE:
             break
         else:
