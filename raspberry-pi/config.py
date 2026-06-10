@@ -58,11 +58,15 @@ HMI_MENU_PAGE_SETTLE_SECONDS = 0.25
 # ============================================================
 #  影音設備
 # ============================================================
-# 人臉相機:USB 視訊裝置 (Logitech C920)，走 OpenCV V4L2，以 index 指定。
-# `v4l2-ctl --list-devices` 顯示 C920 在 /dev/video1 與 /dev/video2；
-# 一般第一個節點是可擷取影像的 video device。
-FACE_CAM_INDEX = 1
+# 人臉相機:USB 視訊裝置 (Logitech)，走 OpenCV V4L2，以 index 指定
+FACE_CAM_INDEX = 0
 FACE_CAM_RESOLUTION = (640, 480)
+# 人臉「本地偵測」(OpenCV Haar cascade:只判斷有沒有臉,不辨識是誰)
+FACE_CASCADE_PATH = "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
+FACE_DETECT_TIMEOUT = 10        # 等待偵測到人臉的最長秒數
+FACE_DETECT_STABLE_FRAMES = 3   # 連續幾幀都偵測到臉才算數(避免一閃而過的誤判)
+FACE_DETECT_WIDTH = 640         # 偵測用相機解析度(低一點偵測較快,對雲端辨識仍足夠)
+FACE_DETECT_HEIGHT = 480
 
 # 食物相機:Raspberry Pi CSI 相機 (IMX219 / Camera v2.1)，走 libcamera，
 # 使用 Picamera2 函式庫 (不是 OpenCV)。以下為 libcamera 列舉的相機編號，

@@ -67,3 +67,6 @@ frontend/test/config.js
 .idea/
 # lgpio 產生的通知管線(GPIO 執行時的暫存 FIFO)
 .lgd-nfy*
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
