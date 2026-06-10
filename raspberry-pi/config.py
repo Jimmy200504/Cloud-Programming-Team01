@@ -53,6 +53,7 @@ BUZZER_PIN = 12   # 訊號腳(S)  實體 Pin 32
 # Raspberry Pi UART: GPIO14=TXD, GPIO15=RXD。/dev/serial0 會指向目前啟用的 UART。
 HMI_SERIAL_PORT = "/dev/serial0"
 HMI_BAUDRATE = 9600
+HMI_MENU_PAGE_SETTLE_SECONDS = 0.25
 
 # ============================================================
 #  影音設備

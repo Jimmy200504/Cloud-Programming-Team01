@@ -44,7 +44,10 @@ def wait_hmi_button(name):
 
 def return_hmi_to_page0():
     debug("HMI 回到 page0")
-    get_default_hmi().send_command("page page0")
+    hmi = get_default_hmi()
+    hmi.clear_events()
+    hmi.send_command("page page0")
+    hmi.clear_events(settle_seconds=0.25)
 
 
 def _paths(prefix):
@@ -93,6 +96,7 @@ def put_flow(fridge):
         fridge.buzzer.beep_error()          # 認證失敗:簡短提示聲
         hmi_show(f"認證失敗,無法存食物。({auth.get('message', '')})")
         fridge.status_light.idle()
+        wait_hmi_button("b_confirm")
         return
     user = auth.get("user", {})
     debug(f"人臉認證成功 user={user}")
@@ -190,10 +194,12 @@ def retrieve_flow(fridge):
         fridge.buzzer.beep_error()          # 認證失敗:簡短提示聲
         hmi_show(f"認證失敗,無法取食物。({auth.get('message', '')})")
         fridge.status_light.idle()
+        wait_hmi_button("b_confirm")
         return
     user = auth.get("user", {})
     debug(f"人臉認證成功 user={user}")
     hmi_show(f"歡迎 {user.get('displayName') or user.get('email')}")
+    wait_hmi_button("b_confirm")
 
     # 3. 開鎖(亮開鎖燈)+ 回報
     debug("開鎖並打開門燈")
@@ -209,8 +215,6 @@ def retrieve_flow(fridge):
 
     # 4. 放要取的食物 → 確認 → 預覽 → 確認 → 拍一張
     hmi_show("請把要取出的食物放到拍攝區,完成後按確認")
-    wait_hmi_button("b_confirm")
-    hmi_show("相機 1 即時預覽中(HMI 會顯示畫面),調整好後按確認")
     wait_hmi_button("b_confirm")
     debug("食物相機拍照開始")
     fridge.food_camera.capture(food_path)
@@ -237,7 +241,7 @@ def retrieve_flow(fridge):
         fridge.status_light.error()
         fridge.buzzer.beep_warning()        # 偷拿別人食物:警告聲
         hmi_show(f"不允許取出:{resp.get('message', '')}")
-        hmi_show("(若非物主,雲端會透過 Shadow 下 led=alert,背景 agent 會自動閃燈警示)")
+        wait_hmi_button("b_confirm")
     print("    後端回應:", resp)
 
     # 7. 等門關上 → 上鎖、熄開鎖燈 + 回報,狀態燈回待機

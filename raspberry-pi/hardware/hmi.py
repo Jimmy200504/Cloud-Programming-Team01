@@ -277,6 +277,33 @@ class HMI:
         except queue.Empty:
             return None
 
+    def clear_events(self, settle_seconds: float = 0.0) -> int:
+        """
+        Drop queued button events.
+
+        A short settle window is useful after page changes because the display
+        can still deliver touch bytes from the previous page.
+        """
+        deadline = time.monotonic() + max(0.0, settle_seconds)
+        cleared = 0
+
+        while True:
+            try:
+                self._events.get_nowait()
+                cleared += 1
+                continue
+            except queue.Empty:
+                pass
+
+            if time.monotonic() >= deadline:
+                break
+
+            time.sleep(0.01)
+
+        if cleared:
+            print(f"HMI cleared {cleared} queued event(s)")
+        return cleared
+
     def wait_button(
         self,
         name: str,
@@ -309,9 +336,16 @@ class HMI:
             if event is None:
                 return None
             if event == HMIEvents.PUT:
+                self._wait_for_menu_page_transition()
                 return "put"
             if event == HMIEvents.GET:
+                self._wait_for_menu_page_transition()
                 return "get"
+
+    def _wait_for_menu_page_transition(self):
+        delay = float(_config_value("HMI_MENU_PAGE_SETTLE_SECONDS", 0.0) or 0.0)
+        if delay > 0:
+            time.sleep(delay)
 
     def inject_event(self, code: int):
         """Test helper for feeding a raw `printh` byte into the parser."""
