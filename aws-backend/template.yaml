@@ -1,0 +1,455 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Smart Fridge MVP cloud backend.
+
+Parameters:
+  StageName:
+    Type: String
+    Default: dev
+  DeviceId:
+    Type: String
+    Default: smart-fridge-001
+  MockMode:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Set to false to enable real DynamoDB delete, IoT Device Shadow, and SES calls.
+  SesFromEmail:
+    Type: String
+    Default: ""
+    Description: Optional verified SES sender email. Leave empty to skip real emails in mock mode.
+  LambdaExecutionRoleArn:
+    Type: String
+    Default: arn:aws:iam::491919374787:role/SmartFridgeLambdaExecutionRole
+    Description: Existing IAM role ARN for the Lambda function.
+  LambdaExecutionRoleName:
+    Type: String
+    Default: SmartFridgeLambdaExecutionRole
+    Description: Existing IAM role name used to attach IoT Device Shadow and SES permissions.
+  RekognitionCollectionId:
+    Type: String
+    Default: ml-smart-fridge-faces
+  FaceMatchThreshold:
+    Type: String
+    Default: "85"
+  FoodClassificationEnabled:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+  FoodClassificationModelId:
+    Type: String
+    Default: jp.anthropic.claude-haiku-4-5-20251001-v1:0
+  FoodClassificationMinConfidence:
+    Type: String
+    Default: "0.55"
+  RekognitionLabelMinConfidence:
+    Type: String
+    Default: "50"
+  MlS3BucketName:
+    Type: String
+    Default: ""
+    Description: Optional existing bucket for Transcribe audio and transcript artifacts.
+  MlTimezone:
+    Type: String
+    Default: Asia/Taipei
+  MlTranscribeLanguageCode:
+    Type: String
+    Default: zh-TW
+  MlTranscribeIdentifyLanguage:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+  MlTranscribeLanguageOptions:
+    Type: String
+    Default: zh-TW,en-US
+  MlTranscribePollSeconds:
+    Type: String
+    Default: "2"
+  MlTranscribeTimeoutSeconds:
+    Type: String
+    Default: "180"
+  MlBedrockDurationMinConfidence:
+    Type: String
+    Default: "0.7"
+
+Conditions:
+  HasSesFromEmail: !Not [!Equals [!Ref SesFromEmail, ""]]
+  HasMlS3BucketName: !Not [!Equals [!Ref MlS3BucketName, ""]]
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    Timeout: 180
+    MemorySize: 256
+    Architectures:
+      - arm64
+    Environment:
+      Variables:
+        MOCK_MODE: !Ref MockMode
+        DEVICE_ID: !Ref DeviceId
+        FOOD_TABLE_NAME: !Ref FoodTable
+        USER_FACE_TABLE_NAME: !Ref UserFaceTable
+        FACE_IMAGE_BUCKET_NAME: !Ref FaceImageBucket
+        FOOD_IMAGE_BUCKET_NAME: !Ref FoodImageBucket
+        USER_POOL_CLIENT_ID: !Ref UserPoolClient
+        REKOGNITION_COLLECTION_ID: !Ref RekognitionCollectionId
+        FACE_MATCH_THRESHOLD: !Ref FaceMatchThreshold
+        FOOD_CLASSIFICATION_ENABLED: !Ref FoodClassificationEnabled
+        FOOD_CLASSIFICATION_MODEL_ID: !Ref FoodClassificationModelId
+        FOOD_CLASSIFICATION_MIN_CONFIDENCE: !Ref FoodClassificationMinConfidence
+        REKOGNITION_LABEL_MIN_CONFIDENCE: !Ref RekognitionLabelMinConfidence
+        ML_S3_BUCKET: !If
+          - HasMlS3BucketName
+          - !Ref MlS3BucketName
+          - !Sub ml-smart-fridge-media-${AWS::AccountId}-${AWS::Region}-an
+        ML_TIMEZONE: !Ref MlTimezone
+        ML_TRANSCRIBE_LANGUAGE_CODE: !Ref MlTranscribeLanguageCode
+        ML_TRANSCRIBE_IDENTIFY_LANGUAGE: !Ref MlTranscribeIdentifyLanguage
+        ML_TRANSCRIBE_LANGUAGE_OPTIONS: !Ref MlTranscribeLanguageOptions
+        ML_TRANSCRIBE_POLL_SECONDS: !Ref MlTranscribePollSeconds
+        ML_TRANSCRIBE_TIMEOUT_SECONDS: !Ref MlTranscribeTimeoutSeconds
+        ML_BEDROCK_DURATION_MIN_CONFIDENCE: !Ref MlBedrockDurationMinConfidence
+        SES_FROM_EMAIL: !Ref SesFromEmail
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1"
+
+Resources:
+  SmartFridgeApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref StageName
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Authorization,Content-Type'"
+        AllowOrigin: "'*'"
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt UserPool.Arn
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub smart-fridge-${StageName}-users
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub smart-fridge-${StageName}-web-client
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+      PreventUserExistenceErrors: ENABLED
+
+  FoodTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub SmartFridgeFoods-${StageName}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: foodId
+          AttributeType: S
+        - AttributeName: ownerUserId
+          AttributeType: S
+        - AttributeName: expirationDate
+          AttributeType: S
+      KeySchema:
+        - AttributeName: foodId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: OwnerExpirationIndex
+          KeySchema:
+            - AttributeName: ownerUserId
+              KeyType: HASH
+            - AttributeName: expirationDate
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  UserFaceTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub SmartFridgeUserFaces-${StageName}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: rekognitionFaceId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: FaceIdIndex
+          KeySchema:
+            - AttributeName: rekognitionFaceId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  FaceImageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub smart-fridge-user-faces-${StageName}-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  FaceImageBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FaceImageBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowLambdaRoleWriteUserFaceImages
+            Effect: Allow
+            Principal:
+              AWS: !Ref LambdaExecutionRoleArn
+            Action:
+              - s3:PutObject
+            Resource: !Sub ${FaceImageBucket.Arn}/user-faces/*
+
+  FoodImageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub smart-fridge-food-images-${StageName}-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  FoodImageBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FoodImageBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowLambdaRoleReadWriteFoodImages
+            Effect: Allow
+            Principal:
+              AWS: !Ref LambdaExecutionRoleArn
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+            Resource: !Sub ${FoodImageBucket.Arn}/food-images/*
+
+  SmartFridgeThing:
+    Type: AWS::IoT::Thing
+    Properties:
+      ThingName: !Ref DeviceId
+
+  SmartFridgeDevicePolicy:
+    Type: AWS::IoT::Policy
+    Properties:
+      PolicyName: !Sub smart-fridge-${StageName}-device-policy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - iot:Connect
+            Resource:
+              - !Sub arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:client/${DeviceId}
+          - Effect: Allow
+            Action:
+              - iot:Publish
+              - iot:Receive
+            Resource:
+              - !Sub arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topic/$aws/things/${DeviceId}/shadow/*
+          - Effect: Allow
+            Action:
+              - iot:Subscribe
+            Resource:
+              - !Sub arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/$aws/things/${DeviceId}/shadow/*
+
+  SesSenderIdentity:
+    Type: AWS::SES::EmailIdentity
+    Condition: HasSesFromEmail
+    Properties:
+      EmailIdentity: !Ref SesFromEmail
+
+  LambdaDeviceShadowSesPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub smart-fridge-${StageName}-device-shadow-ses
+      Roles:
+        - !Ref LambdaExecutionRoleName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowLambdaDeviceShadowAccess
+            Effect: Allow
+            Action:
+              - iot:GetThingShadow
+              - iot:UpdateThingShadow
+            Resource:
+              - !Sub arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:thing/${DeviceId}
+          - Sid: AllowLambdaOwnerAlertEmail
+            Effect: Allow
+            Action:
+              - ses:SendEmail
+              - ses:SendRawEmail
+            Resource: "*"
+
+  ApiHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub smart-fridge-${StageName}-api-handler
+      CodeUri: lambdas/api-handler/
+      Handler: index.handler
+      Role: !Ref LambdaExecutionRoleArn
+      Events:
+        SignUp:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /auth/signup
+            Method: POST
+            Auth:
+              Authorizer: NONE
+        AuthenticateFace:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /auth/face
+            Method: POST
+            Auth:
+              Authorizer: NONE
+        PutFood:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /foods/put
+            Method: POST
+            Auth:
+              Authorizer: NONE
+        DetectFood:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /foods/detect
+            Method: POST
+            Auth:
+              Authorizer: NONE
+        ParseExpiration:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /expiration/parse
+            Method: POST
+            Auth:
+              Authorizer: NONE
+        RetrieveFood:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /foods/retrieve
+            Method: POST
+            Auth:
+              Authorizer: NONE
+        TestOwnerCheck:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /test/owner-check
+            Method: POST
+            Auth:
+              Authorizer: NONE
+        ListMyFoods:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /foods/me
+            Method: GET
+        RegisterMyFace:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /users/me/face
+            Method: POST
+        GetDeviceState:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /device/{deviceId}/state
+            Method: GET
+        UpdateLock:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /device/{deviceId}/lock
+            Method: POST
+
+Outputs:
+  ApiBaseUrl:
+    Description: API Gateway base URL.
+    Value: !Sub https://${SmartFridgeApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
+  UserPoolId:
+    Description: Cognito User Pool ID.
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Cognito Web Client ID.
+    Value: !Ref UserPoolClient
+  FoodTableName:
+    Description: DynamoDB food inventory table.
+    Value: !Ref FoodTable
+  UserFaceTableName:
+    Description: DynamoDB user to Rekognition face mapping table.
+    Value: !Ref UserFaceTable
+  FaceImageBucketName:
+    Description: S3 bucket that stores user face images.
+    Value: !Ref FaceImageBucket
+  FoodImageBucketName:
+    Description: S3 bucket that stores food images.
+    Value: !Ref FoodImageBucket
+  ThingName:
+    Description: IoT Core thing name.
+    Value: !Ref SmartFridgeThing
+  DevicePolicyName:
+    Description: IoT policy to attach to the Raspberry Pi certificate.
+    Value: !Ref SmartFridgeDevicePolicy
