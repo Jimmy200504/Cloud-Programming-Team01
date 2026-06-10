@@ -74,6 +74,7 @@ def put_flow(fridge):
     auth = fridge.cloud.auth_face(face_path, action="put")
     if not auth.get("authenticated"):
         fridge.status_light.error()
+        fridge.buzzer.beep_error()          # 認證失敗:簡短提示聲
         hmi_show(f"認證失敗,無法存食物。({auth.get('message', '')})")
         fridge.status_light.idle()
         return
@@ -147,6 +148,7 @@ def retrieve_flow(fridge):
     auth = fridge.cloud.auth_face(face_path, action="retrieve")
     if not auth.get("authenticated"):
         fridge.status_light.error()
+        fridge.buzzer.beep_error()          # 認證失敗:簡短提示聲
         hmi_show(f"認證失敗,無法取食物。({auth.get('message', '')})")
         fridge.status_light.idle()
         return
@@ -184,6 +186,7 @@ def retrieve_flow(fridge):
         hmi_show(f"允許取出:{resp.get('message', '')}")
     else:
         fridge.status_light.error()
+        fridge.buzzer.beep_warning()        # 偷拿別人食物:警告聲
         hmi_show(f"不允許取出:{resp.get('message', '')}")
         hmi_show("(若非物主,雲端會透過 Shadow 下 led=alert,背景 agent 會自動閃燈警示)")
     print("    後端回應:", resp)
