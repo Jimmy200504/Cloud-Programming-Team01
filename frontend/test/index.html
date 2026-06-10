@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Fridge Account</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Smart Fridge</p>
+            <h1>Account & Face Registration</h1>
+          </div>
+          <div class="status-pill" id="sessionStatus">Signed out</div>
+        </header>
+
+        <div class="grid">
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Account</h2>
+              <span id="accountState">Cognito</span>
+            </div>
+
+            <form id="signupForm" class="form-stack">
+              <label>
+                Email
+                <input id="signupEmail" type="email" autocomplete="email" required />
+              </label>
+              <label>
+                Display name
+                <input id="signupName" type="text" autocomplete="name" />
+              </label>
+              <label>
+                Password
+                <input id="signupPassword" type="password" autocomplete="new-password" required />
+                <span class="field-hint">At least 8 characters with uppercase, lowercase, and a number.</span>
+              </label>
+              <button type="submit">Create account</button>
+            </form>
+
+            <div class="divider"></div>
+
+            <form id="confirmForm" class="form-stack">
+              <label>
+                Confirmation code
+                <input id="confirmCode" type="text" inputmode="numeric" autocomplete="one-time-code" />
+              </label>
+              <button type="submit">Confirm account</button>
+              <button id="resendCode" type="button" class="secondary">Resend code</button>
+            </form>
+
+            <div class="divider"></div>
+
+            <form id="loginForm" class="form-stack">
+              <label>
+                Email
+                <input id="loginEmail" type="email" autocomplete="email" required />
+              </label>
+              <label>
+                Password
+                <input id="loginPassword" type="password" autocomplete="current-password" required />
+              </label>
+              <button type="submit">Sign in</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Face Image</h2>
+              <span id="uploadState">Ready</span>
+            </div>
+
+            <form id="faceForm" class="form-stack">
+              <label>
+                Face image
+                <input id="faceImage" type="file" accept="image/jpeg,image/jpg,image/png" required />
+              </label>
+              <div class="preview-frame">
+                <img id="previewImage" alt="" />
+                <span id="previewEmpty">No image selected</span>
+              </div>
+              <button type="submit">Upload face</button>
+            </form>
+
+            <div class="result-block">
+              <div class="panel-heading compact">
+                <h2>Latest Result</h2>
+                <button id="clearOutput" type="button" class="secondary">Clear</button>
+              </div>
+              <pre id="output">{}</pre>
+            </div>
+          </section>
+
+          <section class="panel wide">
+            <div class="panel-heading">
+              <h2>My Fridge</h2>
+              <button id="refreshInventory" type="button" class="secondary">Refresh</button>
+            </div>
+            <div id="inventoryList" class="inventory-list">
+              <div class="empty-state">Sign in to view foods</div>
+            </div>
+          </section>
+
+          <section class="panel wide">
+            <div class="panel-heading">
+              <h2>Put Food Flow</h2>
+              <span id="putFlowState">Ready</span>
+            </div>
+
+            <form id="putFlowForm" class="form-stack flow-grid">
+              <label>
+                Face image
+                <input id="putFaceImage" type="file" accept="image/jpeg,image/jpg,image/png" required />
+              </label>
+              <label>
+                Food image
+                <input id="putFoodImage" type="file" accept="image/jpeg,image/jpg,image/png" />
+              </label>
+              <label>
+                Food name
+                <input id="putFoodName" type="text" value="milk" />
+              </label>
+              <label>
+                Expiration date
+                <input id="putExpirationDate" type="date" required />
+              </label>
+              <label>
+                Expiration transcript
+                <input id="putExpirationTranscript" type="text" placeholder="兩個月後" />
+              </label>
+              <label>
+                Expiration audio
+                <input id="putExpirationAudio" type="file" accept=".wav,.mp3,.mp4,.m4a,.flac,.ogg,.amr,.webm,audio/wav,audio/mpeg,audio/mp4,audio/m4a,audio/x-m4a,audio/flac,audio/ogg,audio/amr,audio/webm" />
+              </label>
+              <button type="submit">Run put flow</button>
+            </form>
+          </section>
+
+          <section class="panel wide">
+            <div class="panel-heading">
+              <h2>Retrieve Food Flow</h2>
+              <span id="retrieveFlowState">Ready</span>
+            </div>
+
+            <form id="retrieveFlowForm" class="form-stack flow-grid">
+              <label>
+                Face image
+                <input id="retrieveFaceImage" type="file" accept="image/jpeg,image/jpg,image/png" required />
+              </label>
+              <label>
+                Food image
+                <input id="retrieveFoodImage" type="file" accept="image/jpeg,image/jpg,image/png" required />
+              </label>
+              <label>
+                Food id
+                <input id="retrieveFoodId" type="text" placeholder="optional exact food id" />
+              </label>
+              <label>
+                Food name fallback
+                <input id="retrieveFoodName" type="text" placeholder="optional fallback, e.g. milk" />
+              </label>
+              <button type="submit">Run retrieve flow</button>
+            </form>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="./config.js"></script>
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
