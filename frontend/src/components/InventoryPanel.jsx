@@ -47,7 +47,6 @@ function FoodCard({ food }) {
       <div className="food-info">
         <div>
           <h3>{getFoodDisplayName(food)}</h3>
-          <p>{food.foodId || "No food id"}</p>
         </div>
         <dl>
           <div>
