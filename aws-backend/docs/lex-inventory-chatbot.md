@@ -198,6 +198,28 @@ cola
 
 ## Configure Lambda After Creating Lex Bot
 
+You can create the suggested bot with the included CLI script:
+
+```bash
+cd aws-backend
+chmod +x scripts/create-lex-inventory-bot.sh
+LEX_ROLE_ARN=arn:aws:iam::<account-id>:role/<lex-runtime-role> \
+  scripts/create-lex-inventory-bot.sh
+```
+
+Optional environment variables:
+
+```text
+AWS_REGION=ap-northeast-1
+BOT_NAME=SmartFridgeInventoryBot
+LEX_LOCALE_ID=en_US
+BOT_ALIAS_NAME=prod
+```
+
+The script prints `LexBotId`, `LexBotAliasId`, and `LexLocaleId` after creating the bot.
+
+The role passed through `LEX_ROLE_ARN` must be assumable by Lex V2 and should allow the Lex service to write logs if you enable logging later. The IAM user running the script needs Lex model-building permissions and `iam:PassRole` for that role.
+
 After the bot is built and an alias is created, deploy with:
 
 ```bash
