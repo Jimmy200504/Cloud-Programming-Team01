@@ -6,6 +6,7 @@ import AuthPanel from "./components/AuthPanel";
 import CommandHeader from "./components/CommandHeader";
 import DeviceStatePanel from "./components/DeviceStatePanel";
 import FaceRegistrationPanel from "./components/FaceRegistrationPanel";
+import InventoryChatbot from "./components/InventoryChatbot";
 import InventoryPanel from "./components/InventoryPanel";
 import PutFoodPanel from "./components/PutFoodPanel";
 import ResultConsole from "./components/ResultConsole";
@@ -102,6 +103,7 @@ export default function App() {
         <section className={isDevRoute ? "dashboard-grid" : "home-grid"}>
           <FaceRegistrationPanel session={session} onResult={showResult} />
           <InventoryPanel foods={foods} loading={inventoryLoading} message={inventoryMessage} onRefresh={loadInventory} />
+          <InventoryChatbot foods={foods} loading={inventoryLoading} onRefresh={loadInventory} />
           <DeviceStatePanel deviceState={deviceState} loading={deviceStateLoading} message={deviceStateMessage} onRefresh={loadDeviceState} />
           {isDevRoute && (
             <>
