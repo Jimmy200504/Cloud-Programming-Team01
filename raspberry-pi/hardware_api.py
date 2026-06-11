@@ -77,6 +77,7 @@ class SmartFridgeHardware:
         self._resource_lock = threading.Lock()   # 相機/麥克風序列化
         self._telemetry_running = False           # 溫濕度迴圈旗標
         self._led_alert_active = False            # LED 警示是否進行中
+        self._last_climate = (None, None)          # 最近一次溫濕度讀值
 
         # 確保輸出資料夾存在(實機才需實際寫檔)
         if not config.MOCK_MODE:
@@ -301,16 +302,22 @@ class SmartFridgeHardware:
     # ========================================================
     def read_climate(self):
         """讀取目前溫濕度(同步)。回傳 (temperature, humidity)。"""
-        return self.dht.read()
+        self._last_climate = self.dht.read()
+        return self._last_climate
+
+    def get_last_climate(self):
+        """回傳最近一次溫濕度讀值,不觸發感測器讀取。"""
+        return self._last_climate
 
     def report_climate(self):
         """讀取一次溫濕度並回報到 Shadow reported。回傳 (temperature, humidity)。"""
         temperature, humidity = self.dht.read()
+        self._last_climate = (temperature, humidity)
         if self.shadow_manager is not None:
             self.shadow_manager.report_climate(temperature, humidity)
         return temperature, humidity
 
-    def start_telemetry_loop(self, interval: int = 60):
+    def start_telemetry_loop(self, interval: int = 60, on_read=None):
         """背景每 interval 秒回報一次溫濕度到 Shadow(非阻塞)。"""
         if self._telemetry_running:
             print("溫濕度回報迴圈已在執行中")
@@ -319,7 +326,12 @@ class SmartFridgeHardware:
 
         def _loop():
             while self._telemetry_running:
-                self.report_climate()
+                temperature, humidity = self.report_climate()
+                if on_read is not None:
+                    try:
+                        on_read(temperature, humidity)
+                    except Exception as err:
+                        print(f"溫濕度顯示更新失敗: {err}")
                 for _ in range(interval):
                     if not self._telemetry_running:
                         break
@@ -329,6 +341,8 @@ class SmartFridgeHardware:
         print(f"已啟動溫濕度回報迴圈(每 {interval} 秒)")
 
     def stop_telemetry_loop(self):
+        if not self._telemetry_running:
+            return
         self._telemetry_running = False
         print("已停止溫濕度回報迴圈")
 

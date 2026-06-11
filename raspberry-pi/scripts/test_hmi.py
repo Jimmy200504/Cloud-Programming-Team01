@@ -35,6 +35,7 @@ def main():
     hmi = HMI(mock=False)
     try:
         hmi.show_status("HMI test ready")
+        hmi.show_climate(4.2, 55)
         time.sleep(0.5)
         hmi.show_status("請按任一按鈕")
         time.sleep(0.5)

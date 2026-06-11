@@ -29,7 +29,7 @@ import config
 config.MOCK_MODE = (os.environ.get("SF_MOCK") == "1")
 
 from hardware_api import SmartFridgeHardware
-from hardware.hmi import get_default_hmi, hmi_button, hmi_show
+from hardware.hmi import get_default_hmi, hmi_button, hmi_show, hmi_show_climate
 
 
 def debug(msg):
@@ -42,12 +42,20 @@ def wait_hmi_button(name):
     debug(f"收到 HMI 按鈕: {name}")
 
 
-def return_hmi_to_page0():
+def return_hmi_to_page0(fridge=None):
     debug("HMI 回到 page0")
     hmi = get_default_hmi()
     hmi.clear_events()
     hmi.send_command("page page0")
+    refresh_hmi_climate(fridge)
     hmi.clear_events(settle_seconds=0.25)
+
+
+def refresh_hmi_climate(fridge=None):
+    if fridge is None:
+        return
+    temperature, humidity = fridge.get_last_climate()
+    hmi_show_climate(temperature, humidity)
 
 
 def _paths(prefix):
@@ -279,15 +287,17 @@ def run_hmi(fridge):
         choice = hmi.wait_menu_choice()
         debug(f"HMI 主選單收到: {choice}")
         if choice == "put":
+            refresh_hmi_climate(fridge)
             try:
                 put_flow(fridge)
             finally:
-                return_hmi_to_page0()
+                return_hmi_to_page0(fridge)
         elif choice == "get":
+            refresh_hmi_climate(fridge)
             try:
                 retrieve_flow(fridge)
             finally:
-                return_hmi_to_page0()
+                return_hmi_to_page0(fridge)
         elif choice is None and config.MOCK_MODE:
             break
         else:
@@ -313,12 +323,13 @@ def main():
     try:
         debug("開始連線雲端 / AWS IoT Shadow")
         fridge.connect_cloud()                 # 訂閱 Shadow:聽遠端開鎖 / LED 警示
-        debug("啟動溫濕度回報迴圈")
-        fridge.start_telemetry_loop(interval=30)  # 定時上報溫濕度
         print("雲端背景服務已啟動(上報 + 監聽指令)")
     except Exception as err:
         debug(f"雲端連線失敗,進入離線 HMI 模式: {err}")
         print(f"⚠️ 雲端連線失敗,改用離線模式(只跑本地 HMI):{err}")
+
+    debug("啟動溫濕度回報/HMI 更新迴圈")
+    fridge.start_telemetry_loop(interval=30, on_read=hmi_show_climate)
 
     # ---- 前景 HMI ----
     try:
@@ -328,6 +339,7 @@ def main():
         print("\n收到中斷…")
     finally:
         debug("關閉 HMI 與硬體資源")
+        fridge.stop_telemetry_loop()
         get_default_hmi().close()
         fridge.shutdown()
         print("已安全關閉。")

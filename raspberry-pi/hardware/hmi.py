@@ -10,6 +10,9 @@ Display design contract:
       Confirm button (b_confirm) -> printh 13
   - Status text component:
       t_status
+  - Climate text components on page0 and page1:
+      t_temp
+      t_humidity
 
 Nextion commands sent from Python are terminated with three 0xFF bytes.
 `printh XX` button actions are received as raw bytes, so this module parses
@@ -37,6 +40,7 @@ DEFAULT_BAUDRATE = 9600
 DEFAULT_TIMEOUT_SECONDS = 0.1
 DEFAULT_WAIT_TIMEOUT_SECONDS = None
 RESPONSE_CHECK_TIMEOUT_SECONDS = 0.03
+CLIMATE_PAGES = ("page0", "page1")
 
 
 @dataclass(frozen=True)
@@ -190,6 +194,19 @@ class HMI:
     def show(self, text: str):
         """Compatibility alias for status text updates."""
         self.show_status(text)
+
+    def show_climate(self, temperature, humidity):
+        """Update temperature and humidity text on page0 and page1."""
+        temp_text = _format_temperature(temperature)
+        humidity_text = _format_humidity(humidity)
+
+        for page in CLIMATE_PAGES:
+            self.set_text(f"{page}.t_temp", temp_text)
+            self.set_text(f"{page}.t_humidity", humidity_text)
+
+        # Also update the active page when components are page-local.
+        self.set_text("t_temp", temp_text)
+        self.set_text("t_humidity", humidity_text)
 
     def set_visible(self, component: str, visible: bool):
         """Show or hide one Nextion component."""
@@ -377,6 +394,18 @@ def _escape_nextion_text(text: str) -> str:
     return str(text).replace("\\", "\\\\").replace('"', '\\"')
 
 
+def _format_temperature(value) -> str:
+    if value is None:
+        return "--°C"
+    return f"{float(value):.1f}°C"
+
+
+def _format_humidity(value) -> str:
+    if value is None:
+        return "--%"
+    return f"{float(value):.0f}%"
+
+
 _default_hmi = None
 
 
@@ -390,6 +419,11 @@ def get_default_hmi() -> HMI:
 def hmi_show(text: str):
     """Drop-in helper for code that only needs to update `t_status`."""
     get_default_hmi().show_status(text)
+
+
+def hmi_show_climate(temperature, humidity):
+    """Drop-in helper for updating HMI climate fields."""
+    get_default_hmi().show_climate(temperature, humidity)
 
 
 def hmi_button(name: str, timeout: Optional[float] = DEFAULT_WAIT_TIMEOUT_SECONDS) -> Optional[HMIEvent]:
