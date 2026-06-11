@@ -119,7 +119,7 @@ IOT_POLICY_NAME = "smart-fridge-dev-device-policy"  # 憑證要掛的 IoT 政策
 # 來源:aws-backend/docs/hardware-embedded-integration-guide.md
 API_BASE_URL = "https://v6ylyjtxga.execute-api.ap-northeast-1.amazonaws.com/dev"
 TIMEZONE = "Asia/Taipei"        # 送出 capturedAt 時用的時區
-API_TIMEOUT_SECONDS = 30        # API 呼叫逾時秒數
+API_TIMEOUT_SECONDS = 60        # API 呼叫逾時秒數
 
 # ============================================================
 #  Device Shadow 欄位 (依雲端整合契約)
