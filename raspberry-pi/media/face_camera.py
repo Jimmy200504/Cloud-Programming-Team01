@@ -8,6 +8,9 @@
    否則其他模組 (例如食物相機若共用裝置) 會無法存取。
 """
 
+import os
+import re
+import glob
 import time
 import config
 
@@ -21,9 +24,35 @@ class FaceCamera:
 
     def __init__(self, cam_index: int = config.FACE_CAM_INDEX):
         """
-        :param cam_index: OpenCV 相機索引 (預設 0)
+        :param cam_index: OpenCV 相機索引 (預設 0,作為 by-id 找不到時的備援)
         """
         self.cam_index = cam_index
+        # 開機用 /dev/v4l/by-id 穩定路徑解析實際 index(避免重開機後編號跑掉)
+        if not config.MOCK_MODE:
+            self.cam_index = self._resolve_index()
+
+    def _resolve_index(self) -> int:
+        """
+        以 /dev/v4l/by-id 的穩定符號連結(依裝置序號,重開機不變)定位 USB 相機,
+        解析成目前的 /dev/videoN 編號。找不到則回傳備援 self.cam_index。
+        """
+        try:
+            for link in sorted(glob.glob("/dev/v4l/by-id/*")):
+                name = os.path.basename(link)
+                # 取「擷取節點」(-video-index0);index1 是 metadata 不能拍
+                if config.FACE_CAM_MATCH.lower() in name.lower() \
+                        and name.endswith("-video-index0"):
+                    real = os.path.realpath(link)          # 例如 /dev/video0
+                    m = re.search(r"(\d+)$", real)
+                    if m:
+                        idx = int(m.group(1))
+                        print(f"人臉相機定位: {name} → {real} (index {idx})")
+                        return idx
+        except Exception as err:
+            print(f"by-id 定位失敗({err}),改用備援 index {self.cam_index}")
+            return self.cam_index
+        print(f"by-id 找不到 '{config.FACE_CAM_MATCH}',改用備援 index {self.cam_index}")
+        return self.cam_index
 
     def capture(self, save_path: str) -> str:
         """

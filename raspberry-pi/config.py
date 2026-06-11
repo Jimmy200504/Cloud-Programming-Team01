@@ -57,8 +57,11 @@ HMI_BAUDRATE = 9600
 # ============================================================
 #  影音設備
 # ============================================================
-# 人臉相機:USB 視訊裝置 (Logitech)，走 OpenCV V4L2，以 index 指定
-FACE_CAM_INDEX = 0
+# 人臉相機:USB 視訊裝置 (Logitech)。
+# 為避免重開機後 /dev/videoN 編號跑掉,優先用 /dev/v4l/by-id 的「穩定路徑」
+# (依裝置序號,重開機不變)解析出目前的 index;找不到才退回 FACE_CAM_INDEX。
+FACE_CAM_MATCH = "Webcam"   # 在 /dev/v4l/by-id/ 名稱裡比對的關鍵字(你的是 ...Webcam_C920...)
+FACE_CAM_INDEX = 0          # 備援:by-id 找不到時用的固定 index
 # 人臉「本地偵測」(OpenCV Haar cascade:只判斷有沒有臉,不辨識是誰)
 FACE_CASCADE_PATH = "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
 FACE_DETECT_TIMEOUT = 10        # 等待偵測到人臉的最長秒數
