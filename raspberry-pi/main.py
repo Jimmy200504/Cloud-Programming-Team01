@@ -203,7 +203,7 @@ def put_flow(fridge):
         debug("人臉認證失敗,中止存食物流程")
         fridge.status_light.error()
         fridge.buzzer.beep_error()          # 認證失敗:簡短提示聲
-        hmi_show(f"認證失敗,無法存食物。({auth.get('message', '')})")
+        hmi_show(f"認證失敗,無法存食物。")
         fridge.status_light.idle()
         wait_hmi_button("b_confirm")
         return
