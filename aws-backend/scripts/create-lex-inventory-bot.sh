@@ -187,17 +187,6 @@ aws lexv2-models create-slot \
   --query 'slotId' \
   --output text >/dev/null
 
-echo "Creating fallback intent"
-aws lexv2-models create-intent \
-  --region "$REGION" \
-  --bot-id "$BOT_ID" \
-  --bot-version DRAFT \
-  --locale-id "$LOCALE_ID" \
-  --intent-name "FallbackIntent" \
-  --parent-intent-signature "AMAZON.FallbackIntent" \
-  --query 'intentId' \
-  --output text >/dev/null
-
 echo "Building locale"
 aws lexv2-models build-bot-locale \
   --region "$REGION" \
