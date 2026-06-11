@@ -103,7 +103,7 @@ export default function App() {
         <section className={isDevRoute ? "dashboard-grid" : "home-grid"}>
           <FaceRegistrationPanel session={session} onResult={showResult} />
           <InventoryPanel foods={foods} loading={inventoryLoading} message={inventoryMessage} onRefresh={loadInventory} />
-          <InventoryChatbot foods={foods} loading={inventoryLoading} onRefresh={loadInventory} />
+          <InventoryChatbot session={session} foods={foods} loading={inventoryLoading} onRefresh={loadInventory} />
           <DeviceStatePanel deviceState={deviceState} loading={deviceStateLoading} message={deviceStateMessage} onRefresh={loadDeviceState} />
           {isDevRoute && (
             <>

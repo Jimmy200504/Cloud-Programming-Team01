@@ -25,6 +25,9 @@ const SES_FROM_EMAIL = process.env.SES_FROM_EMAIL;
 const CLIMATE_TEMPERATURE_MAX_C = 6;
 const CLIMATE_HUMIDITY_MIN_PERCENT = 65;
 const CLIMATE_HUMIDITY_MAX_PERCENT = 85;
+const LEX_BOT_ID = process.env.LEX_BOT_ID;
+const LEX_BOT_ALIAS_ID = process.env.LEX_BOT_ALIAS_ID;
+const LEX_LOCALE_ID = process.env.LEX_LOCALE_ID || "en_US";
 
 const FOOD_CATALOG = [
   { id: "soy_milk", displayName: "Soy milk", zhName: "豆漿", aliases: ["soy milk", "soymilk", "豆漿", "豆浆"], parent: "milk", category: "beverage" },
@@ -110,6 +113,10 @@ export const handler = async (event) => {
 
     if (method === "GET" && path === "/foods/me") {
       return json(200, await listMyFoods(event));
+    }
+
+    if (method === "POST" && path === "/chat/message") {
+      return json(200, await chatMessage(event, body));
     }
 
     if (method === "POST" && path === "/users/me/face") {
@@ -665,6 +672,59 @@ async function listMyFoods(event) {
   };
 }
 
+async function chatMessage(event, body) {
+  const message = String(body.message || body.text || "").trim();
+  if (!message) {
+    return {
+      success: false,
+      errorCode: "INVALID_CHAT_MESSAGE",
+      message: "message is required"
+    };
+  }
+
+  const currentUser = getCurrentUser(event);
+  const currentUserId = currentUser.userId || mockUser.userId;
+  const foods = await getInventoryForUser(currentUserId);
+  const lex = await recognizeInventoryIntent({
+    text: message,
+    sessionId: body.sessionId || currentUserId || `chat-${DEVICE_ID}`
+  });
+  const answer = answerInventoryChat({
+    question: message,
+    foods,
+    lex
+  });
+
+  return {
+    success: true,
+    message: answer,
+    source: lex.used ? "lex" : "local",
+    lex,
+    inventoryCount: foods.length
+  };
+}
+
+async function getInventoryForUser(ownerUserId) {
+  if (FOOD_TABLE_NAME) {
+    const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb");
+    const { DynamoDBDocumentClient, QueryCommand } = await import("@aws-sdk/lib-dynamodb");
+    const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+    const result = await client.send(
+      new QueryCommand({
+        TableName: FOOD_TABLE_NAME,
+        IndexName: "OwnerExpirationIndex",
+        KeyConditionExpression: "ownerUserId = :ownerUserId",
+        ExpressionAttributeValues: {
+          ":ownerUserId": ownerUserId
+        }
+      })
+    );
+    return publicFoodItems(result.Items || []);
+  }
+
+  return publicFoodItems(mockFoods.filter((food) => MOCK_MODE || food.ownerUserId === ownerUserId));
+}
+
 async function getDeviceState(deviceId) {
   if (!MOCK_MODE) {
     const shadow = await getThingShadow(deviceId);
@@ -799,6 +859,232 @@ async function sendClimateAlert(deviceId, body) {
     },
     shadowAlertUpdated
   };
+}
+
+async function recognizeInventoryIntent({ text, sessionId }) {
+  if (!LEX_BOT_ID || !LEX_BOT_ALIAS_ID) {
+    return {
+      used: false,
+      reason: "LEX_NOT_CONFIGURED"
+    };
+  }
+
+  try {
+    const { LexRuntimeV2Client, RecognizeTextCommand } = await import("@aws-sdk/client-lex-runtime-v2");
+    const client = new LexRuntimeV2Client({});
+    const result = await client.send(
+      new RecognizeTextCommand({
+        botId: LEX_BOT_ID,
+        botAliasId: LEX_BOT_ALIAS_ID,
+        localeId: LEX_LOCALE_ID,
+        sessionId: String(sessionId).slice(0, 100),
+        text
+      })
+    );
+    const topInterpretation = result.interpretations?.[0] || {};
+    return {
+      used: true,
+      botId: LEX_BOT_ID,
+      botAliasId: LEX_BOT_ALIAS_ID,
+      localeId: LEX_LOCALE_ID,
+      intentName: topInterpretation.intent?.name || result.sessionState?.intent?.name || null,
+      confidence: topInterpretation.nluConfidence?.score ?? null,
+      slots: lexSlotsToValues(topInterpretation.intent?.slots || result.sessionState?.intent?.slots || {}),
+      messages: (result.messages || []).map((message) => message.content).filter(Boolean)
+    };
+  } catch (error) {
+    console.error("Lex RecognizeText failed; falling back to local inventory chat", error);
+    return {
+      used: false,
+      reason: error.name || "LEX_RECOGNIZE_TEXT_FAILED",
+      message: error.message
+    };
+  }
+}
+
+function answerInventoryChat({ question, foods, lex }) {
+  if (foods.length === 0) return "目前庫存是空的。";
+
+  const summary = summarizeInventoryForChat(foods);
+  const normalized = normalizeChatText(question);
+  const lexIntent = normalizeChatText(lex.intentName);
+  const slotFoodName = normalizeChatText(lex.slots?.FoodName || lex.slots?.foodName);
+  const mentionedFoods = findChatMentionedFoods(slotFoodName || normalized, foods);
+
+  if (["nearest expiration intent", "nearestexpirationintent", "next expiring food intent"].includes(lexIntent) || asksNearestExpirationText(normalized)) {
+    return formatNearestChatExpiration(summary);
+  }
+
+  if (["expiring soon intent", "expiringsoonintent"].includes(lexIntent) || asksExpiringSoonText(normalized)) {
+    return formatChatFoodList(summary.expiringSoon, "接下來 2 天內快過期的食物", "目前沒有 2 天內快過期的食物。");
+  }
+
+  if (["expired food intent", "expiredfoodintent"].includes(lexIntent) || asksExpiredText(normalized)) {
+    return formatChatFoodList(summary.expired, "已過期的食物", "目前沒有已過期的食物。");
+  }
+
+  if (["count inventory intent", "countinventoryintent"].includes(lexIntent) || asksCountText(normalized)) {
+    return `目前冰箱裡共有 ${foods.length} 項食物。${summary.countsText ? ` ${summary.countsText}` : ""}`;
+  }
+
+  if (["food lookup intent", "foodlookupintent"].includes(lexIntent) || mentionedFoods.length > 0) {
+    return formatMatchedChatFoods(mentionedFoods);
+  }
+
+  if (["check inventory intent", "checkinventoryintent"].includes(lexIntent) || asksAllInventoryText(normalized)) {
+    return formatChatFoodList(summary.sortedFoods, "目前冰箱內容物", "目前庫存是空的。");
+  }
+
+  return `目前有 ${foods.length} 項食物。${formatChatFoodList(summary.sortedFoods.slice(0, 5), "庫存摘要", "")}`;
+}
+
+function lexSlotsToValues(slots) {
+  return Object.fromEntries(
+    Object.entries(slots || {}).map(([name, slot]) => [
+      name,
+      slot?.value?.interpretedValue || slot?.value?.originalValue || null
+    ])
+  );
+}
+
+function summarizeInventoryForChat(foods) {
+  const sortedFoods = [...foods].sort((a, b) => {
+    const left = daysUntilDate(a.expirationDate);
+    const right = daysUntilDate(b.expirationDate);
+    if (left === null && right === null) return 0;
+    if (left === null) return 1;
+    if (right === null) return -1;
+    return left - right;
+  });
+  const upcomingFoods = sortedFoods.filter((food) => {
+    const days = daysUntilDate(food.expirationDate);
+    return days !== null && days >= 0;
+  });
+  const expiringSoon = sortedFoods.filter((food) => {
+    const days = daysUntilDate(food.expirationDate);
+    return days !== null && days >= 0 && days <= 2;
+  });
+  const expired = sortedFoods.filter((food) => {
+    const days = daysUntilDate(food.expirationDate);
+    return days !== null && days < 0;
+  });
+  const counts = new Map();
+  for (const food of foods) {
+    const name = chatFoodDisplayName(food);
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  const countsText = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 4)
+    .map(([name, count]) => `${name} ${count} 項`)
+    .join("、");
+
+  return { sortedFoods, upcomingFoods, expiringSoon, expired, countsText };
+}
+
+function findChatMentionedFoods(query, foods) {
+  const normalizedQuery = normalizeChatText(query);
+  if (!normalizedQuery) return [];
+
+  const matchedIds = new Set();
+  for (const entry of FOOD_CATALOG) {
+    const terms = [entry.id, entry.displayName, entry.zhName, ...(entry.aliases || [])];
+    if (terms.some((term) => normalizedQuery.includes(normalizeChatText(term)))) {
+      matchedIds.add(normalizeChatText(entry.id));
+    }
+  }
+
+  return foods.filter((food) => {
+    const names = [
+      food.foodName,
+      food.foodClassification?.foodName,
+      food.foodClassification?.displayName,
+      chatFoodDisplayName(food)
+    ].map(normalizeChatText);
+
+    return names.some((name) => matchedIds.has(name) || normalizedQuery.includes(name));
+  });
+}
+
+function formatMatchedChatFoods(foods) {
+  if (foods.length === 0) return "目前沒有找到你問的食物。";
+  const foodName = chatFoodDisplayName(foods[0]);
+  return `有，找到 ${foods.length} 項 ${foodName}。${foods.map(formatChatFoodLine).join("；")}`;
+}
+
+function formatChatFoodList(foods, title, emptyText) {
+  if (foods.length === 0) return emptyText;
+  return `${title}：${foods.map(formatChatFoodLine).join("；")}`;
+}
+
+function formatNearestChatExpiration(summary) {
+  const food = summary.upcomingFoods[0];
+  if (food) {
+    const expiredNote = summary.expired.length
+      ? ` 另外 ${summary.expired.map((item) => chatFoodDisplayName(item)).join("、")} 已經過期。`
+      : "";
+    return `最先快過期的是 ${formatChatFoodLine(food)}。${expiredNote}`;
+  }
+
+  if (summary.expired.length > 0) {
+    return `目前沒有未來才到期的食物，但有已過期項目：${summary.expired.map(formatChatFoodLine).join("；")}`;
+  }
+
+  return "目前沒有可判斷到期日的食物。";
+}
+
+function formatChatFoodLine(food) {
+  const days = daysUntilDate(food.expirationDate);
+  const daysText = days === null ? "剩餘天數未知" : days < 0 ? `已過期 ${Math.abs(days)} 天` : `剩 ${days} 天`;
+  return `${chatFoodDisplayName(food)}，${formatDateOnly(food.expirationDate)} 到期，${daysText}`;
+}
+
+function chatFoodDisplayName(food) {
+  return food.foodName || food.foodClassification?.displayName || food.foodClassification?.foodName || "Unknown";
+}
+
+function daysUntilDate(dateValue) {
+  if (!dateValue) return null;
+  const target = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((target.getTime() - today.getTime()) / 86400000);
+}
+
+function formatDateOnly(value) {
+  return value ? String(value).slice(0, 10) : "unknown";
+}
+
+function asksNearestExpirationText(value) {
+  const asksOrder = ["第一個", "哪個先", "最先", "最快", "最早", "最近", "next", "first", "earliest"].some((term) =>
+    value.includes(term)
+  );
+  const asksExpiration = ["快過期", "過期", "到期", "expire", "expiration"].some((term) => value.includes(term));
+  return asksOrder && asksExpiration;
+}
+
+function asksExpiringSoonText(value) {
+  return ["快過期", "即將過期", "soon", "expire soon", "expiring"].some((term) => value.includes(term));
+}
+
+function asksExpiredText(value) {
+  return ["已過期", "過期了", "expired", "late"].some((term) => value.includes(term));
+}
+
+function asksCountText(value) {
+  return ["幾個", "幾項", "多少", "count", "how many"].some((term) => value.includes(term));
+}
+
+function asksAllInventoryText(value) {
+  return ["有什麼", "內容物", "庫存", "清單", "inventory", "list", "what"].some((term) => value.includes(term));
+}
+
+function normalizeChatText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
 }
 
 async function registerMyFace(event, body) {

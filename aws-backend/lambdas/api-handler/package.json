@@ -8,6 +8,7 @@
     "@aws-sdk/client-cognito-identity-provider": "^3.699.0",
     "@aws-sdk/client-dynamodb": "^3.699.0",
     "@aws-sdk/client-iot-data-plane": "^3.699.0",
+    "@aws-sdk/client-lex-runtime-v2": "^3.1066.0",
     "@aws-sdk/client-rekognition": "^3.699.0",
     "@aws-sdk/client-s3": "^3.699.0",
     "@aws-sdk/client-ses": "^3.699.0",

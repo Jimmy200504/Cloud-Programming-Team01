@@ -1,5 +1,6 @@
 import { Bot, RefreshCw, Send, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
+import { sendChatMessage } from "../api/smartFridgeApi";
 import { getFoodDisplayName } from "../utils/food";
 import { daysUntil, formatDate } from "../utils/format";
 import StatusBadge from "./StatusBadge";
@@ -25,8 +26,9 @@ const FOOD_TERMS = [
 
 const QUICK_PROMPTS = ["冰箱裡有什麼？", "快過期有哪些？", "有豆漿嗎？"];
 
-export default function InventoryChatbot({ foods, loading, onRefresh }) {
+export default function InventoryChatbot({ session, foods, loading, onRefresh }) {
   const [input, setInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
   const [messages, setMessages] = useState(() => [
     {
       role: "assistant",
@@ -40,21 +42,38 @@ export default function InventoryChatbot({ foods, loading, onRefresh }) {
     const question = input.trim();
     if (!question) return;
 
-    setMessages((current) => [
-      ...current,
-      { role: "user", text: question },
-      { role: "assistant", text: answerInventoryQuestion(question, foods, summary) }
-    ]);
+    await askQuestion(question);
     setInput("");
   }
 
-  function askQuickPrompt(prompt) {
+  async function askQuickPrompt(prompt) {
     setInput(prompt);
+    await askQuestion(prompt);
+  }
+
+  async function askQuestion(question) {
+    const fallbackAnswer = answerInventoryQuestion(question, foods, summary);
     setMessages((current) => [
       ...current,
-      { role: "user", text: prompt },
-      { role: "assistant", text: answerInventoryQuestion(prompt, foods, summary) }
+      { role: "user", text: question },
+      { role: "assistant", text: "查詢中..." }
     ]);
+
+    setChatLoading(true);
+    try {
+      const response = session?.idToken
+        ? await sendChatMessage(session.idToken, {
+            message: question,
+            sessionId: session.user?.userId || session.user?.email || "web-chat"
+          })
+        : null;
+      const answer = response?.message || fallbackAnswer;
+      setMessages((current) => replaceLastAssistantMessage(current, answer));
+    } catch {
+      setMessages((current) => replaceLastAssistantMessage(current, fallbackAnswer));
+    } finally {
+      setChatLoading(false);
+    }
   }
 
   return (
@@ -90,13 +109,24 @@ export default function InventoryChatbot({ foods, loading, onRefresh }) {
       </div>
 
       <form className="chat-form" onSubmit={handleSubmit}>
-        <input value={input} onChange={(event) => setInput(event.target.value)} placeholder="問冰箱內容物..." />
-        <button type="submit" aria-label="Send inventory question">
+        <input value={input} onChange={(event) => setInput(event.target.value)} placeholder="問冰箱內容物..." disabled={chatLoading} />
+        <button type="submit" aria-label="Send inventory question" disabled={chatLoading}>
           <Send size={18} />
         </button>
       </form>
     </section>
   );
+}
+
+function replaceLastAssistantMessage(messages, text) {
+  const nextMessages = [...messages];
+  for (let index = nextMessages.length - 1; index >= 0; index -= 1) {
+    if (nextMessages[index].role === "assistant") {
+      nextMessages[index] = { ...nextMessages[index], text };
+      return nextMessages;
+    }
+  }
+  return [...nextMessages, { role: "assistant", text }];
 }
 
 function answerInventoryQuestion(question, foods, summary) {

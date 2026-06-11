@@ -77,6 +77,18 @@ Parameters:
   MlBedrockDurationMinConfidence:
     Type: String
     Default: "0.7"
+  LexBotId:
+    Type: String
+    Default: ""
+    Description: Optional Amazon Lex V2 bot id for inventory chat.
+  LexBotAliasId:
+    Type: String
+    Default: ""
+    Description: Optional Amazon Lex V2 bot alias id for inventory chat.
+  LexLocaleId:
+    Type: String
+    Default: en_US
+    Description: Amazon Lex V2 locale id for inventory chat.
 
 Conditions:
   HasSesFromEmail: !Not [!Equals [!Ref SesFromEmail, ""]]
@@ -117,6 +129,9 @@ Globals:
         ML_TRANSCRIBE_TIMEOUT_SECONDS: !Ref MlTranscribeTimeoutSeconds
         ML_BEDROCK_DURATION_MIN_CONFIDENCE: !Ref MlBedrockDurationMinConfidence
         SES_FROM_EMAIL: !Ref SesFromEmail
+        LEX_BOT_ID: !Ref LexBotId
+        LEX_BOT_ALIAS_ID: !Ref LexBotAliasId
+        LEX_LOCALE_ID: !Ref LexLocaleId
         AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1"
 
 Resources:
@@ -378,6 +393,12 @@ Resources:
             RestApiId: !Ref SmartFridgeApi
             Path: /foods/me
             Method: GET
+        ChatMessage:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /chat/message
+            Method: POST
         RegisterMyFace:
           Type: Api
           Properties:
