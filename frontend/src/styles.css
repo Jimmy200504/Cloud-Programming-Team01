@@ -674,6 +674,32 @@ h3 {
   line-height: 1.1;
 }
 
+.lock-control {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.lock-action {
+  min-width: 0;
+  min-height: 46px;
+  color: var(--ink);
+  background: rgba(62, 230, 186, 0.08);
+}
+
+.lock-action.active {
+  color: #04110e;
+  background: linear-gradient(135deg, var(--accent), #9fffe4);
+}
+
+.lock-command-note {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .console-window {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -794,6 +820,10 @@ h3 {
   }
 
   .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lock-control {
     grid-template-columns: 1fr;
   }
 }

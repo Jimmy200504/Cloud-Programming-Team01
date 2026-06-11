@@ -1,10 +1,11 @@
-import { Droplets, RefreshCw, Thermometer, Timer, UnlockKeyhole } from "lucide-react";
+import { Droplets, LockKeyhole, RefreshCw, Thermometer, Timer, UnlockKeyhole } from "lucide-react";
 import { formatDateTime } from "../utils/format";
 import StatusBadge from "./StatusBadge";
 
-export default function DeviceStatePanel({ deviceState, loading, message, onRefresh }) {
+export default function DeviceStatePanel({ deviceState, loading, lockCommand, lockUpdating, message, onRefresh, onSetLock }) {
   const temperature = formatMetric(deviceState?.temperature, "°C");
   const humidity = formatMetric(deviceState?.humidity, "%");
+  const currentLock = deviceState?.lock || "unknown";
 
   return (
     <section className="panel device-panel">
@@ -30,9 +31,38 @@ export default function DeviceStatePanel({ deviceState, loading, message, onRefr
         <div className="metric-grid">
           <MetricCard icon={Thermometer} label="Temperature" value={temperature} />
           <MetricCard icon={Droplets} label="Humidity" value={humidity} />
-          <MetricCard icon={UnlockKeyhole} label="Lock" value={deviceState?.lock || "unknown"} />
+          <MetricCard icon={currentLock === "unlocked" ? UnlockKeyhole : LockKeyhole} label="Lock" value={currentLock} />
           <MetricCard icon={Timer} label="Last sync" value={formatDateTime(deviceState?.lastSeenAt)} />
         </div>
+      )}
+
+      {!message && (
+        <div className="lock-control">
+          <button
+            className={currentLock === "locked" ? "lock-action active" : "lock-action"}
+            type="button"
+            disabled={loading || lockUpdating}
+            onClick={() => onSetLock("locked")}
+          >
+            <LockKeyhole size={18} />
+            Locked
+          </button>
+          <button
+            className={currentLock === "unlocked" ? "lock-action active" : "lock-action"}
+            type="button"
+            disabled={loading || lockUpdating}
+            onClick={() => onSetLock("unlocked")}
+          >
+            <UnlockKeyhole size={18} />
+            Unlocked
+          </button>
+        </div>
+      )}
+
+      {lockCommand && !message && (
+        <p className="lock-command-note">
+          Command sent: {lockCommand}. Refresh after the device reports the new shadow state.
+        </p>
       )}
     </section>
   );
