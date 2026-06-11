@@ -2,7 +2,7 @@
 """
 人臉相機模組 (face_camera.py)
 ============================================================
-提供 `FaceCamera` 類別，使用 OpenCV 啟動「相機 0」拍照並存檔。
+提供 `FaceCamera` 類別，使用 OpenCV 啟動 USB 人臉相機拍照並存檔。
 
 ⚠️ 重要：拍完照後務必立即呼叫 cap.release() 釋放相機，
    否則其他模組 (例如食物相機若共用裝置) 會無法存取。
@@ -20,13 +20,16 @@ if not config.MOCK_MODE:
 
 
 class FaceCamera:
-    """人臉辨識用相機 (相機 0)。"""
+    """人臉辨識用 USB 相機。"""
 
-    def __init__(self, cam_index: int = config.FACE_CAM_INDEX):
+    def __init__(self, cam_index: int = config.FACE_CAM_INDEX,
+                 resolution=config.FACE_CAM_RESOLUTION):
         """
         :param cam_index: OpenCV 相機索引 (預設 0,作為 by-id 找不到時的備援)
+        :param resolution: 擷取解析度 (寬, 高)
         """
         self.cam_index = cam_index
+        self.resolution = resolution
         # 開機用 /dev/v4l/by-id 穩定路徑解析實際 index(避免重開機後編號跑掉)
         if not config.MOCK_MODE:
             self.cam_index = self._resolve_index()
@@ -67,11 +70,16 @@ class FaceCamera:
             return save_path
 
         # ---- 實機模式：用 OpenCV 拍照 ----
-        cap = cv2.VideoCapture(self.cam_index)
+        cap = cv2.VideoCapture(self.cam_index, cv2.CAP_V4L2)
         try:
             if not cap.isOpened():
                 print(f"無法開啟人臉相機 (index={self.cam_index})")
                 return None
+
+            width, height = self.resolution
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
             ret, frame = cap.read()
             if not ret:
@@ -87,7 +95,8 @@ class FaceCamera:
 
     def capture_when_face(self, save_path: str,
                           timeout: float = config.FACE_DETECT_TIMEOUT,
-                          stable_frames: int = config.FACE_DETECT_STABLE_FRAMES) -> str:
+                          stable_frames: int = config.FACE_DETECT_STABLE_FRAMES,
+                          should_cancel=None) -> str:
         """
         開相機持續偵測,連續 stable_frames 幀都偵測到「有人臉」才拍那一幀存檔。
         timeout 秒內都沒偵測到臉則回傳 None(讓上層提示重試)。
@@ -116,6 +125,9 @@ class FaceCamera:
             deadline = time.time() + timeout
             hit = 0   # 連續偵測到臉的幀數
             while time.time() < deadline:
+                if should_cancel is not None and should_cancel():
+                    print("人臉偵測已取消")
+                    return None
                 ret, frame = cap.read()
                 if not ret:
                     continue

@@ -7,11 +7,13 @@ Display design contract:
       Put button -> printh 01
       Get button -> printh 02
   - Flow buttons:
-      確認(b_confirm)  -> printh 11
-      拍好了(b_photo)  -> printh 12
-      錄好了(b_record) -> printh 13
+      Confirm button (b_confirm) -> printh 13
+      Back button -> printh 14
   - Status text component:
       t_status
+  - Climate text components on page0 and page1:
+      t_temp
+      t_humidity
 
 Nextion commands sent from Python are terminated with three 0xFF bytes.
 `printh XX` button actions are received as raw bytes, so this module parses
@@ -39,6 +41,7 @@ DEFAULT_BAUDRATE = 9600
 DEFAULT_TIMEOUT_SECONDS = 0.1
 DEFAULT_WAIT_TIMEOUT_SECONDS = None
 RESPONSE_CHECK_TIMEOUT_SECONDS = 0.03
+CLIMATE_PAGES = ("page0", "page1")
 
 
 @dataclass(frozen=True)
@@ -52,9 +55,8 @@ class HMIEvent:
 class HMIEvents:
     PUT = HMIEvent(0x01, "put")
     GET = HMIEvent(0x02, "get")
-    CONFIRM = HMIEvent(0x11, "confirm")
-    PHOTO_DONE = HMIEvent(0x12, "photo_done")
-    RECORD_DONE = HMIEvent(0x13, "record_done")
+    CONFIRM = HMIEvent(0x13, "confirm")
+    BACK = HMIEvent(0x14, "back")
 
 
 EVENTS_BY_CODE = {
@@ -63,8 +65,7 @@ EVENTS_BY_CODE = {
         HMIEvents.PUT,
         HMIEvents.GET,
         HMIEvents.CONFIRM,
-        HMIEvents.PHOTO_DONE,
-        HMIEvents.RECORD_DONE,
+        HMIEvents.BACK,
     )
 }
 
@@ -72,20 +73,25 @@ BUTTON_EVENTS = {
     "put": HMIEvents.PUT,
     "get": HMIEvents.GET,
     "confirm": HMIEvents.CONFIRM,
-    "photo_done": HMIEvents.PHOTO_DONE,
-    "record_done": HMIEvents.RECORD_DONE,
+    "b_confirm": HMIEvents.CONFIRM,
     "確認": HMIEvents.CONFIRM,
-    "拍好了": HMIEvents.PHOTO_DONE,
-    "錄好了": HMIEvents.RECORD_DONE,
+    "photo_done": HMIEvents.CONFIRM,
+    "record_done": HMIEvents.CONFIRM,
+    "拍好了": HMIEvents.CONFIRM,
+    "錄好了": HMIEvents.CONFIRM,
+    "back": HMIEvents.BACK,
+    "b_back": HMIEvents.BACK,
+    "返回": HMIEvents.BACK,
 }
 
 FLOW_BUTTON_COMPONENTS = {
     "confirm": "b_confirm",
-    "photo_done": "b_photo",
-    "record_done": "b_record",
+    "b_confirm": "b_confirm",
     "確認": "b_confirm",
-    "拍好了": "b_photo",
-    "錄好了": "b_record",
+    "photo_done": "b_confirm",
+    "record_done": "b_confirm",
+    "拍好了": "b_confirm",
+    "錄好了": "b_confirm",
 }
 
 
@@ -195,6 +201,19 @@ class HMI:
         """Compatibility alias for status text updates."""
         self.show_status(text)
 
+    def show_climate(self, temperature, humidity):
+        """Update temperature and humidity text on page0 and page1."""
+        temp_text = _format_temperature(temperature)
+        humidity_text = _format_humidity(humidity)
+
+        for page in CLIMATE_PAGES:
+            self.set_text(f"{page}.t_temp", temp_text)
+            self.set_text(f"{page}.t_humidity", humidity_text)
+
+        # Also update the active page when components are page-local.
+        self.set_text("t_temp", temp_text)
+        self.set_text("t_humidity", humidity_text)
+
     def set_visible(self, component: str, visible: bool):
         """Show or hide one Nextion component."""
         self.send_command(f"vis {component},{1 if visible else 0}")
@@ -208,7 +227,7 @@ class HMI:
         self.set_visible(FLOW_BUTTON_COMPONENTS[name], False)
 
     def hide_flow_buttons(self):
-        """Hide 確認 / 拍好了 / 錄好了 buttons."""
+        """Hide the flow confirm button."""
         for component in sorted(set(FLOW_BUTTON_COMPONENTS.values())):
             self.set_visible(component, False)
 
@@ -281,11 +300,39 @@ class HMI:
         except queue.Empty:
             return None
 
+    def clear_events(self, settle_seconds: float = 0.0) -> int:
+        """
+        Drop queued button events.
+
+        A short settle window is useful after page changes because the display
+        can still deliver touch bytes from the previous page.
+        """
+        deadline = time.monotonic() + max(0.0, settle_seconds)
+        cleared = 0
+
+        while True:
+            try:
+                self._events.get_nowait()
+                cleared += 1
+                continue
+            except queue.Empty:
+                pass
+
+            if time.monotonic() >= deadline:
+                break
+
+            time.sleep(0.01)
+
+        if cleared:
+            print(f"HMI cleared {cleared} queued event(s)")
+        return cleared
+
     def wait_button(
         self,
         name: str,
         timeout: Optional[float] = DEFAULT_WAIT_TIMEOUT_SECONDS,
         visible_while_waiting: bool = True,
+        cancel_events: tuple[HMIEvent, ...] = (),
     ) -> Optional[HMIEvent]:
         """Wait until a specific logical button is pressed."""
         expected = BUTTON_EVENTS[name]
@@ -300,6 +347,8 @@ class HMI:
                 event = self.wait_event(timeout=remaining)
                 if event is None:
                     return None
+                if event in cancel_events:
+                    return event
                 if event == expected:
                     return event
         finally:
@@ -313,9 +362,16 @@ class HMI:
             if event is None:
                 return None
             if event == HMIEvents.PUT:
+                self._wait_for_menu_page_transition()
                 return "put"
             if event == HMIEvents.GET:
+                self._wait_for_menu_page_transition()
                 return "get"
+
+    def _wait_for_menu_page_transition(self):
+        delay = float(_config_value("HMI_MENU_PAGE_SETTLE_SECONDS", 0.0) or 0.0)
+        if delay > 0:
+            time.sleep(delay)
 
     def inject_event(self, code: int):
         """Test helper for feeding a raw `printh` byte into the parser."""
@@ -324,7 +380,7 @@ class HMI:
     def _wait_mock_event(self, timeout: Optional[float]) -> Optional[HMIEvent]:
         prompt = (
             "[Mock HMI] press: "
-            "1=put, 2=get, 11=confirm, 12=photo_done, 13=record_done, q=timeout/quit: "
+            "1=put, 2=get, 13=confirm, 14=back, q=timeout/quit: "
         )
         raw = input(prompt).strip().lower()
         if raw in ("", "q"):
@@ -347,6 +403,18 @@ def _escape_nextion_text(text: str) -> str:
     return str(text).replace("\\", "\\\\").replace('"', '\\"')
 
 
+def _format_temperature(value) -> str:
+    if value is None:
+        return "--°C"
+    return f"{float(value):.1f}°C"
+
+
+def _format_humidity(value) -> str:
+    if value is None:
+        return "--%"
+    return f"{float(value):.0f}%"
+
+
 _default_hmi = None
 
 
@@ -362,6 +430,15 @@ def hmi_show(text: str):
     get_default_hmi().show_status(text)
 
 
-def hmi_button(name: str, timeout: Optional[float] = DEFAULT_WAIT_TIMEOUT_SECONDS) -> Optional[HMIEvent]:
+def hmi_show_climate(temperature, humidity):
+    """Drop-in helper for updating HMI climate fields."""
+    get_default_hmi().show_climate(temperature, humidity)
+
+
+def hmi_button(
+    name: str,
+    timeout: Optional[float] = DEFAULT_WAIT_TIMEOUT_SECONDS,
+    cancel_events: tuple[HMIEvent, ...] = (),
+) -> Optional[HMIEvent]:
     """Drop-in helper for waiting on a named HMI button."""
-    return get_default_hmi().wait_button(name, timeout=timeout)
+    return get_default_hmi().wait_button(name, timeout=timeout, cancel_events=cancel_events)

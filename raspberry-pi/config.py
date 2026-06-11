@@ -53,6 +53,7 @@ BUZZER_PIN = 12   # 訊號腳(S)  實體 Pin 32
 # Raspberry Pi UART: GPIO14=TXD, GPIO15=RXD。/dev/serial0 會指向目前啟用的 UART。
 HMI_SERIAL_PORT = "/dev/serial0"
 HMI_BAUDRATE = 9600
+HMI_MENU_PAGE_SETTLE_SECONDS = 0.25
 
 # ============================================================
 #  影音設備
@@ -62,6 +63,8 @@ HMI_BAUDRATE = 9600
 # (依裝置序號,重開機不變)解析出目前的 index;找不到才退回 FACE_CAM_INDEX。
 FACE_CAM_MATCH = "Webcam"   # 在 /dev/v4l/by-id/ 名稱裡比對的關鍵字(你的是 ...Webcam_C920...)
 FACE_CAM_INDEX = 0          # 備援:by-id 找不到時用的固定 index
+FACE_CAM_RESOLUTION = (640, 480)
+
 # 人臉「本地偵測」(OpenCV Haar cascade:只判斷有沒有臉,不辨識是誰)
 FACE_CASCADE_PATH = "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
 FACE_DETECT_TIMEOUT = 10        # 等待偵測到人臉的最長秒數
