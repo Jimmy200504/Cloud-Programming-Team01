@@ -4,6 +4,7 @@ const FOOD_TABLE_NAME = process.env.FOOD_TABLE_NAME;
 const USER_FACE_TABLE_NAME = process.env.USER_FACE_TABLE_NAME;
 const FACE_IMAGE_BUCKET_NAME = process.env.FACE_IMAGE_BUCKET_NAME;
 const FOOD_IMAGE_BUCKET_NAME = process.env.FOOD_IMAGE_BUCKET_NAME;
+const USER_POOL_ID = process.env.USER_POOL_ID;
 const USER_POOL_CLIENT_ID = process.env.USER_POOL_CLIENT_ID;
 const REKOGNITION_COLLECTION_ID = process.env.REKOGNITION_COLLECTION_ID || "ml-smart-fridge-faces";
 const FACE_MATCH_THRESHOLD = Number(process.env.FACE_MATCH_THRESHOLD || "85");
@@ -21,6 +22,12 @@ const ML_TRANSCRIBE_POLL_SECONDS = Number(process.env.ML_TRANSCRIBE_POLL_SECONDS
 const ML_TRANSCRIBE_TIMEOUT_SECONDS = Number(process.env.ML_TRANSCRIBE_TIMEOUT_SECONDS || "180");
 const ML_BEDROCK_DURATION_MIN_CONFIDENCE = Number(process.env.ML_BEDROCK_DURATION_MIN_CONFIDENCE || "0.7");
 const SES_FROM_EMAIL = process.env.SES_FROM_EMAIL;
+const CLIMATE_TEMPERATURE_MAX_C = 6;
+const CLIMATE_HUMIDITY_MIN_PERCENT = 65;
+const CLIMATE_HUMIDITY_MAX_PERCENT = 85;
+const LEX_BOT_ID = process.env.LEX_BOT_ID;
+const LEX_BOT_ALIAS_ID = process.env.LEX_BOT_ALIAS_ID;
+const LEX_LOCALE_ID = process.env.LEX_LOCALE_ID || "en_US";
 
 const FOOD_CATALOG = [
   { id: "soy_milk", displayName: "Soy milk", zhName: "豆漿", aliases: ["soy milk", "soymilk", "豆漿", "豆浆"], parent: "milk", category: "beverage" },
@@ -108,6 +115,10 @@ export const handler = async (event) => {
       return json(200, await listMyFoods(event));
     }
 
+    if (method === "POST" && path === "/chat/message") {
+      return json(200, await chatMessage(event, body));
+    }
+
     if (method === "POST" && path === "/users/me/face") {
       return json(200, await registerMyFace(event, body));
     }
@@ -120,6 +131,11 @@ export const handler = async (event) => {
     const lockMatch = path.match(/^\/device\/([^/]+)\/lock$/);
     if (method === "POST" && lockMatch) {
       return json(200, await updateLock(lockMatch[1], body));
+    }
+
+    const climateAlertMatch = path.match(/^\/device\/([^/]+)\/climate-alert$/);
+    if (method === "POST" && climateAlertMatch) {
+      return json(200, await sendClimateAlert(climateAlertMatch[1], body));
     }
 
     return json(404, {
@@ -656,6 +672,59 @@ async function listMyFoods(event) {
   };
 }
 
+async function chatMessage(event, body) {
+  const message = String(body.message || body.text || "").trim();
+  if (!message) {
+    return {
+      success: false,
+      errorCode: "INVALID_CHAT_MESSAGE",
+      message: "message is required"
+    };
+  }
+
+  const currentUser = getCurrentUser(event);
+  const currentUserId = currentUser.userId || mockUser.userId;
+  const foods = await getInventoryForUser(currentUserId);
+  const lex = await recognizeInventoryIntent({
+    text: message,
+    sessionId: body.sessionId || currentUserId || `chat-${DEVICE_ID}`
+  });
+  const answer = answerInventoryChat({
+    question: message,
+    foods,
+    lex
+  });
+
+  return {
+    success: true,
+    message: answer,
+    source: lex.used ? "lex" : "local",
+    lex,
+    inventoryCount: foods.length
+  };
+}
+
+async function getInventoryForUser(ownerUserId) {
+  if (FOOD_TABLE_NAME) {
+    const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb");
+    const { DynamoDBDocumentClient, QueryCommand } = await import("@aws-sdk/lib-dynamodb");
+    const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+    const result = await client.send(
+      new QueryCommand({
+        TableName: FOOD_TABLE_NAME,
+        IndexName: "OwnerExpirationIndex",
+        KeyConditionExpression: "ownerUserId = :ownerUserId",
+        ExpressionAttributeValues: {
+          ":ownerUserId": ownerUserId
+        }
+      })
+    );
+    return publicFoodItems(result.Items || []);
+  }
+
+  return publicFoodItems(mockFoods.filter((food) => MOCK_MODE || food.ownerUserId === ownerUserId));
+}
+
 async function getDeviceState(deviceId) {
   if (!MOCK_MODE) {
     const shadow = await getThingShadow(deviceId);
@@ -698,6 +767,324 @@ async function updateLock(deviceId, body) {
     deviceId,
     desiredLock: body.desiredLock
   };
+}
+
+async function sendClimateAlert(deviceId, body) {
+  const temperature = numberOrNull(body.temperature);
+  const humidity = numberOrNull(body.humidity);
+  const capturedAt = body.capturedAt || body.lastSeenAt || new Date().toISOString();
+  const alerts = climateAlertsFor({ temperature, humidity });
+
+  if (temperature === null && humidity === null) {
+    return {
+      success: false,
+      errorCode: "INVALID_CLIMATE_READING",
+      message: "temperature or humidity is required"
+    };
+  }
+
+  if (alerts.length === 0) {
+    return {
+      success: true,
+      alertSent: false,
+      deviceId,
+      temperature,
+      humidity,
+      capturedAt,
+      message: "Climate is within the configured safe range"
+    };
+  }
+
+  const recipients = await getAllKnownUserEmails();
+  if (recipients.length === 0) {
+    return {
+      success: false,
+      alertSent: false,
+      errorCode: "NO_ALERT_RECIPIENTS",
+      deviceId,
+      temperature,
+      humidity,
+      capturedAt,
+      alerts,
+      message: "No user email addresses were found"
+    };
+  }
+
+  const subject = "Smart Fridge climate alert";
+  const bodyText = [
+    "Smart Fridge detected an unsafe climate reading.",
+    "",
+    `Device: ${deviceId}`,
+    `Temperature: ${temperature === null ? "unknown" : `${temperature} C`}`,
+    `Humidity: ${humidity === null ? "unknown" : `${humidity}%`}`,
+    `Time: ${capturedAt}`,
+    "",
+    "Alerts:",
+    ...alerts.map((alert) => `- ${alert.message}`)
+  ].join("\n");
+
+  const results = await sendEmailToRecipients({
+    recipients,
+    subject,
+    bodyText
+  });
+
+  let shadowAlertUpdated = false;
+  if (!MOCK_MODE) {
+    try {
+      await updateThingShadow(deviceId, { desired: { led: "alert" } });
+      shadowAlertUpdated = true;
+    } catch (error) {
+      console.error("Unable to update climate alert LED shadow state", error);
+    }
+  }
+
+  return {
+    success: results.failed.length === 0,
+    alertSent: results.sent.length > 0,
+    deviceId,
+    temperature,
+    humidity,
+    capturedAt,
+    thresholds: {
+      temperatureMaxC: CLIMATE_TEMPERATURE_MAX_C,
+      humidityMinPercent: CLIMATE_HUMIDITY_MIN_PERCENT,
+      humidityMaxPercent: CLIMATE_HUMIDITY_MAX_PERCENT
+    },
+    alerts,
+    recipients: {
+      total: recipients.length,
+      sent: results.sent,
+      failed: results.failed
+    },
+    shadowAlertUpdated
+  };
+}
+
+async function recognizeInventoryIntent({ text, sessionId }) {
+  if (!LEX_BOT_ID || !LEX_BOT_ALIAS_ID) {
+    return {
+      used: false,
+      reason: "LEX_NOT_CONFIGURED"
+    };
+  }
+
+  try {
+    const { LexRuntimeV2Client, RecognizeTextCommand } = await import("@aws-sdk/client-lex-runtime-v2");
+    const client = new LexRuntimeV2Client({});
+    const result = await client.send(
+      new RecognizeTextCommand({
+        botId: LEX_BOT_ID,
+        botAliasId: LEX_BOT_ALIAS_ID,
+        localeId: LEX_LOCALE_ID,
+        sessionId: String(sessionId).slice(0, 100),
+        text
+      })
+    );
+    const topInterpretation = result.interpretations?.[0] || {};
+    return {
+      used: true,
+      botId: LEX_BOT_ID,
+      botAliasId: LEX_BOT_ALIAS_ID,
+      localeId: LEX_LOCALE_ID,
+      intentName: topInterpretation.intent?.name || result.sessionState?.intent?.name || null,
+      confidence: topInterpretation.nluConfidence?.score ?? null,
+      slots: lexSlotsToValues(topInterpretation.intent?.slots || result.sessionState?.intent?.slots || {}),
+      messages: (result.messages || []).map((message) => message.content).filter(Boolean)
+    };
+  } catch (error) {
+    console.error("Lex RecognizeText failed; falling back to local inventory chat", error);
+    return {
+      used: false,
+      reason: error.name || "LEX_RECOGNIZE_TEXT_FAILED",
+      message: error.message
+    };
+  }
+}
+
+function answerInventoryChat({ question, foods, lex }) {
+  if (foods.length === 0) return "目前庫存是空的。";
+
+  const summary = summarizeInventoryForChat(foods);
+  const normalized = normalizeChatText(question);
+  const lexIntent = normalizeChatText(lex.intentName);
+  const slotFoodName = normalizeChatText(lex.slots?.FoodName || lex.slots?.foodName);
+  const mentionedFoods = findChatMentionedFoods(slotFoodName || normalized, foods);
+
+  if (["nearest expiration intent", "nearestexpirationintent", "next expiring food intent"].includes(lexIntent) || asksNearestExpirationText(normalized)) {
+    return formatNearestChatExpiration(summary);
+  }
+
+  if (["expiring soon intent", "expiringsoonintent"].includes(lexIntent) || asksExpiringSoonText(normalized)) {
+    return formatChatFoodList(summary.expiringSoon, "接下來 2 天內快過期的食物", "目前沒有 2 天內快過期的食物。");
+  }
+
+  if (["expired food intent", "expiredfoodintent"].includes(lexIntent) || asksExpiredText(normalized)) {
+    return formatChatFoodList(summary.expired, "已過期的食物", "目前沒有已過期的食物。");
+  }
+
+  if (["count inventory intent", "countinventoryintent"].includes(lexIntent) || asksCountText(normalized)) {
+    return `目前冰箱裡共有 ${foods.length} 項食物。${summary.countsText ? ` ${summary.countsText}` : ""}`;
+  }
+
+  if (["food lookup intent", "foodlookupintent"].includes(lexIntent) || mentionedFoods.length > 0) {
+    return formatMatchedChatFoods(mentionedFoods);
+  }
+
+  if (["check inventory intent", "checkinventoryintent"].includes(lexIntent) || asksAllInventoryText(normalized)) {
+    return formatChatFoodList(summary.sortedFoods, "目前冰箱內容物", "目前庫存是空的。");
+  }
+
+  return `目前有 ${foods.length} 項食物。${formatChatFoodList(summary.sortedFoods.slice(0, 5), "庫存摘要", "")}`;
+}
+
+function lexSlotsToValues(slots) {
+  return Object.fromEntries(
+    Object.entries(slots || {}).map(([name, slot]) => [
+      name,
+      slot?.value?.interpretedValue || slot?.value?.originalValue || null
+    ])
+  );
+}
+
+function summarizeInventoryForChat(foods) {
+  const sortedFoods = [...foods].sort((a, b) => {
+    const left = daysUntilDate(a.expirationDate);
+    const right = daysUntilDate(b.expirationDate);
+    if (left === null && right === null) return 0;
+    if (left === null) return 1;
+    if (right === null) return -1;
+    return left - right;
+  });
+  const upcomingFoods = sortedFoods.filter((food) => {
+    const days = daysUntilDate(food.expirationDate);
+    return days !== null && days >= 0;
+  });
+  const expiringSoon = sortedFoods.filter((food) => {
+    const days = daysUntilDate(food.expirationDate);
+    return days !== null && days >= 0 && days <= 2;
+  });
+  const expired = sortedFoods.filter((food) => {
+    const days = daysUntilDate(food.expirationDate);
+    return days !== null && days < 0;
+  });
+  const counts = new Map();
+  for (const food of foods) {
+    const name = chatFoodDisplayName(food);
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  const countsText = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 4)
+    .map(([name, count]) => `${name} ${count} 項`)
+    .join("、");
+
+  return { sortedFoods, upcomingFoods, expiringSoon, expired, countsText };
+}
+
+function findChatMentionedFoods(query, foods) {
+  const normalizedQuery = normalizeChatText(query);
+  if (!normalizedQuery) return [];
+
+  const matchedIds = new Set();
+  for (const entry of FOOD_CATALOG) {
+    const terms = [entry.id, entry.displayName, entry.zhName, ...(entry.aliases || [])];
+    if (terms.some((term) => normalizedQuery.includes(normalizeChatText(term)))) {
+      matchedIds.add(normalizeChatText(entry.id));
+    }
+  }
+
+  return foods.filter((food) => {
+    const names = [
+      food.foodName,
+      food.foodClassification?.foodName,
+      food.foodClassification?.displayName,
+      chatFoodDisplayName(food)
+    ].map(normalizeChatText);
+
+    return names.some((name) => matchedIds.has(name) || normalizedQuery.includes(name));
+  });
+}
+
+function formatMatchedChatFoods(foods) {
+  if (foods.length === 0) return "目前沒有找到你問的食物。";
+  const foodName = chatFoodDisplayName(foods[0]);
+  return `有，找到 ${foods.length} 項 ${foodName}。${foods.map(formatChatFoodLine).join("；")}`;
+}
+
+function formatChatFoodList(foods, title, emptyText) {
+  if (foods.length === 0) return emptyText;
+  return `${title}：${foods.map(formatChatFoodLine).join("；")}`;
+}
+
+function formatNearestChatExpiration(summary) {
+  const food = summary.upcomingFoods[0];
+  if (food) {
+    const expiredNote = summary.expired.length
+      ? ` 另外 ${summary.expired.map((item) => chatFoodDisplayName(item)).join("、")} 已經過期。`
+      : "";
+    return `最先快過期的是 ${formatChatFoodLine(food)}。${expiredNote}`;
+  }
+
+  if (summary.expired.length > 0) {
+    return `目前沒有未來才到期的食物，但有已過期項目：${summary.expired.map(formatChatFoodLine).join("；")}`;
+  }
+
+  return "目前沒有可判斷到期日的食物。";
+}
+
+function formatChatFoodLine(food) {
+  const days = daysUntilDate(food.expirationDate);
+  const daysText = days === null ? "剩餘天數未知" : days < 0 ? `已過期 ${Math.abs(days)} 天` : `剩 ${days} 天`;
+  return `${chatFoodDisplayName(food)}，${formatDateOnly(food.expirationDate)} 到期，${daysText}`;
+}
+
+function chatFoodDisplayName(food) {
+  return food.foodName || food.foodClassification?.displayName || food.foodClassification?.foodName || "Unknown";
+}
+
+function daysUntilDate(dateValue) {
+  if (!dateValue) return null;
+  const target = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((target.getTime() - today.getTime()) / 86400000);
+}
+
+function formatDateOnly(value) {
+  return value ? String(value).slice(0, 10) : "unknown";
+}
+
+function asksNearestExpirationText(value) {
+  const asksOrder = ["第一個", "哪個先", "最先", "最快", "最早", "最近", "next", "first", "earliest"].some((term) =>
+    value.includes(term)
+  );
+  const asksExpiration = ["快過期", "過期", "到期", "expire", "expiration"].some((term) => value.includes(term));
+  return asksOrder && asksExpiration;
+}
+
+function asksExpiringSoonText(value) {
+  return ["快過期", "即將過期", "soon", "expire soon", "expiring"].some((term) => value.includes(term));
+}
+
+function asksExpiredText(value) {
+  return ["已過期", "過期了", "expired", "late"].some((term) => value.includes(term));
+}
+
+function asksCountText(value) {
+  return ["幾個", "幾項", "多少", "count", "how many"].some((term) => value.includes(term));
+}
+
+function asksAllInventoryText(value) {
+  return ["有什麼", "內容物", "庫存", "清單", "inventory", "list", "what"].some((term) => value.includes(term));
+}
+
+function normalizeChatText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
 }
 
 async function registerMyFace(event, body) {
@@ -1581,26 +1968,184 @@ async function updateThingShadow(deviceId, state) {
 async function sendOwnerAlert({ ownerEmail, foodName, actorUserId }) {
   if (!SES_FROM_EMAIL) return;
 
+  await sendEmail({
+    recipient: ownerEmail,
+    subject: "Smart Fridge food alert",
+    bodyText: `Someone attempted to retrieve your ${foodName}. Actor user id: ${actorUserId}`
+  });
+}
+
+async function sendEmailToRecipients({ recipients, subject, bodyText }) {
+  if (!SES_FROM_EMAIL || MOCK_MODE) {
+    return {
+      sent: [],
+      failed: recipients.map((email) => ({
+        email,
+        error: SES_FROM_EMAIL ? "MOCK_MODE" : "SES_FROM_EMAIL_NOT_CONFIGURED"
+      }))
+    };
+  }
+
+  const sent = [];
+  const failed = [];
+  for (const recipient of recipients) {
+    try {
+      await sendEmail({ recipient, subject, bodyText });
+      sent.push(recipient);
+    } catch (error) {
+      console.error(`Failed to send email to ${recipient}`, error);
+      failed.push({
+        email: recipient,
+        error: error.name || "SEND_EMAIL_FAILED",
+        message: error.message
+      });
+    }
+  }
+
+  return { sent, failed };
+}
+
+async function sendEmail({ recipient, subject, bodyText }) {
   const { SESClient, SendEmailCommand } = await import("@aws-sdk/client-ses");
   const client = new SESClient({});
   await client.send(
     new SendEmailCommand({
       Source: SES_FROM_EMAIL,
       Destination: {
-        ToAddresses: [ownerEmail]
+        ToAddresses: [recipient]
       },
       Message: {
         Subject: {
-          Data: "Smart Fridge food alert"
+          Data: subject
         },
         Body: {
           Text: {
-            Data: `Someone attempted to retrieve your ${foodName}. Actor user id: ${actorUserId}`
+            Data: bodyText
           }
         }
       }
     })
   );
+}
+
+function climateAlertsFor({ temperature, humidity }) {
+  const alerts = [];
+  if (temperature !== null && temperature > CLIMATE_TEMPERATURE_MAX_C) {
+    alerts.push({
+      type: "temperature-high",
+      value: temperature,
+      threshold: CLIMATE_TEMPERATURE_MAX_C,
+      message: `Temperature is above ${CLIMATE_TEMPERATURE_MAX_C} C`
+    });
+  }
+
+  if (
+    humidity !== null &&
+    (humidity < CLIMATE_HUMIDITY_MIN_PERCENT || humidity > CLIMATE_HUMIDITY_MAX_PERCENT)
+  ) {
+    alerts.push({
+      type: humidity < CLIMATE_HUMIDITY_MIN_PERCENT ? "humidity-low" : "humidity-high",
+      value: humidity,
+      safeRange: {
+        min: CLIMATE_HUMIDITY_MIN_PERCENT,
+        max: CLIMATE_HUMIDITY_MAX_PERCENT
+      },
+      message: `Humidity is outside ${CLIMATE_HUMIDITY_MIN_PERCENT}-${CLIMATE_HUMIDITY_MAX_PERCENT}%`
+    });
+  }
+
+  return alerts;
+}
+
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+async function getAllKnownUserEmails() {
+  const emails = new Set();
+  if (USER_POOL_ID) {
+    try {
+      for (const email of await listCognitoUserEmails()) {
+        addNormalizedEmail(emails, email);
+      }
+    } catch (error) {
+      console.error("Unable to list Cognito users for climate alert recipients", error);
+    }
+  }
+
+  if (USER_FACE_TABLE_NAME) {
+    for (const item of await scanAllItems({
+      tableName: USER_FACE_TABLE_NAME,
+      projectionExpression: "email"
+    })) {
+      addNormalizedEmail(emails, item.email);
+    }
+  }
+
+  if (FOOD_TABLE_NAME) {
+    for (const item of await scanAllItems({
+      tableName: FOOD_TABLE_NAME,
+      projectionExpression: "ownerEmail"
+    })) {
+      addNormalizedEmail(emails, item.ownerEmail);
+    }
+  }
+
+  if (emails.size === 0 && mockUser.email) {
+    addNormalizedEmail(emails, mockUser.email);
+  }
+
+  return [...emails].sort();
+}
+
+async function listCognitoUserEmails() {
+  const { CognitoIdentityProviderClient, ListUsersCommand } = await import("@aws-sdk/client-cognito-identity-provider");
+  const client = new CognitoIdentityProviderClient({});
+  const emails = [];
+  let PaginationToken;
+  do {
+    const result = await client.send(
+      new ListUsersCommand({
+        UserPoolId: USER_POOL_ID,
+        PaginationToken
+      })
+    );
+    for (const user of result.Users || []) {
+      const emailAttribute = user.Attributes?.find((attribute) => attribute.Name === "email");
+      if (emailAttribute?.Value) emails.push(emailAttribute.Value);
+    }
+    PaginationToken = result.PaginationToken;
+  } while (PaginationToken);
+
+  return emails;
+}
+
+function addNormalizedEmail(emails, value) {
+  const email = normalizeEmail(value);
+  if (email && email.includes("@")) emails.add(email);
+}
+
+async function scanAllItems({ tableName, projectionExpression }) {
+  const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb");
+  const { DynamoDBDocumentClient, ScanCommand } = await import("@aws-sdk/lib-dynamodb");
+  const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+  const items = [];
+  let ExclusiveStartKey;
+  do {
+    const result = await client.send(
+      new ScanCommand({
+        TableName: tableName,
+        ProjectionExpression: projectionExpression,
+        ExclusiveStartKey
+      })
+    );
+    items.push(...(result.Items || []));
+    ExclusiveStartKey = result.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+
+  return items;
 }
 
 async function putFoodItem(food) {

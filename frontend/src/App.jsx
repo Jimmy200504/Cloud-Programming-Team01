@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { errorToObject } from "./api/http";
-import { getDeviceState, listMyFoods } from "./api/smartFridgeApi";
+import { getDeviceState, listMyFoods, signalLock } from "./api/smartFridgeApi";
 import { clearSession, loadSession } from "./auth/sessionStore";
 import AuthPanel from "./components/AuthPanel";
 import CommandHeader from "./components/CommandHeader";
 import DeviceStatePanel from "./components/DeviceStatePanel";
 import FaceRegistrationPanel from "./components/FaceRegistrationPanel";
+import InventoryChatbot from "./components/InventoryChatbot";
 import InventoryPanel from "./components/InventoryPanel";
 import PutFoodPanel from "./components/PutFoodPanel";
 import ResultConsole from "./components/ResultConsole";
@@ -20,6 +21,8 @@ export default function App() {
   const [deviceState, setDeviceState] = useState(null);
   const [deviceStateMessage, setDeviceStateMessage] = useState(session.idToken ? "Loading device state" : "");
   const [deviceStateLoading, setDeviceStateLoading] = useState(false);
+  const [lockUpdating, setLockUpdating] = useState(false);
+  const [lockCommand, setLockCommand] = useState("");
   const [result, setResult] = useState({});
 
   const showResult = useCallback((value) => {
@@ -62,6 +65,7 @@ export default function App() {
       const response = await getDeviceState(session.idToken);
       setDeviceState(response);
       setDeviceStateMessage("");
+      setLockCommand("");
     } catch (error) {
       setDeviceState(null);
       setDeviceStateMessage(error.message || "Unable to load device state");
@@ -79,6 +83,26 @@ export default function App() {
     void loadDeviceState();
   }, [loadDeviceState]);
 
+  async function handleSetLock(desiredLock) {
+    if (!session.idToken) return;
+
+    setLockUpdating(true);
+    try {
+      const response = await signalLock(session.idToken, desiredLock);
+      setDeviceState((current) => ({
+        ...(current || {}),
+        deviceId: response.deviceId || current?.deviceId,
+        lock: response.desiredLock || desiredLock
+      }));
+      setLockCommand(response.desiredLock || desiredLock);
+      showResult(response);
+    } catch (error) {
+      showResult(error);
+    } finally {
+      setLockUpdating(false);
+    }
+  }
+
   function handleSessionChange(nextSession) {
     if (!nextSession) {
       clearSession();
@@ -87,6 +111,8 @@ export default function App() {
       setInventoryMessage("");
       setDeviceState(null);
       setDeviceStateMessage("");
+      setLockUpdating(false);
+      setLockCommand("");
       setResult({ success: true, signedOut: true });
       return;
     }
@@ -102,7 +128,16 @@ export default function App() {
         <section className={isDevRoute ? "dashboard-grid" : "home-grid"}>
           <FaceRegistrationPanel session={session} onResult={showResult} />
           <InventoryPanel foods={foods} loading={inventoryLoading} message={inventoryMessage} onRefresh={loadInventory} />
-          <DeviceStatePanel deviceState={deviceState} loading={deviceStateLoading} message={deviceStateMessage} onRefresh={loadDeviceState} />
+          <InventoryChatbot session={session} foods={foods} loading={inventoryLoading} onRefresh={loadInventory} />
+          <DeviceStatePanel
+            deviceState={deviceState}
+            loading={deviceStateLoading}
+            lockCommand={lockCommand}
+            lockUpdating={lockUpdating}
+            message={deviceStateMessage}
+            onRefresh={loadDeviceState}
+            onSetLock={handleSetLock}
+          />
           {isDevRoute && (
             <>
               <PutFoodPanel session={session} onInventoryChanged={loadInventory} onResult={showResult} />

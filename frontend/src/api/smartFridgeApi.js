@@ -82,3 +82,11 @@ export function signalLock(token, desiredLock = "unlocked") {
     }
   });
 }
+
+export function sendChatMessage(token, body) {
+  return apiJson("/chat/message", {
+    method: "POST",
+    token,
+    body
+  });
+}

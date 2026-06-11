@@ -25,13 +25,13 @@ http://localhost:5173
 ```
 
 Shows the main user-facing console with face registration and inventory.
-It also includes the current device climate panel for temperature and humidity.
+It also includes the current device climate panel for temperature, humidity, and remote lock control.
 
 ```text
 http://localhost:5173/dev
 ```
 
-Shows the full development console with device climate, put-food, retrieve-food, and API telemetry panels.
+Shows the full development console with device climate, remote lock control, put-food, retrieve-food, and API telemetry panels.
 
 The app uses the current shared dev backend by default. To point it at another stack:
 
@@ -84,6 +84,7 @@ frontend/
 - Face image registration through `POST /users/me/face`.
 - User inventory loading through `GET /foods/me`.
 - Device temperature and humidity loading through `GET /device/{deviceId}/state`.
+- Remote device lock control through `POST /device/{deviceId}/lock`.
 - Put-food flow through face auth, optional hardware unlock, food creation, and inventory refresh.
 - Retrieve-food flow through face auth, ownership check, optional hardware unlock, and inventory refresh.
 - Expiration transcript/audio parsing through `POST /expiration/parse`.

@@ -10,9 +10,8 @@ Run on the Raspberry Pi:
 Expected HMI button events:
     Put      -> printh 01
     Get      -> printh 02
-    確認     -> printh 11
-    拍好了   -> printh 12
-    錄好了   -> printh 13
+    b_confirm -> printh 13
+    Back     -> printh 14
 """
 
 import os
@@ -36,10 +35,13 @@ def main():
 
     hmi = HMI(mock=False)
     try:
-        hmi.hide_flow_buttons()
         hmi.show_status("HMI test ready")
+        hmi.show_climate(4.2, 55)
         time.sleep(0.5)
         hmi.show_status("請按任一按鈕")
+        time.sleep(0.5)
+        print("Sending direct command: vis b_confirm,1")
+        hmi.send_command("vis b_confirm,1")
 
         while True:
             event = hmi.wait_event(timeout=1)
@@ -53,11 +55,9 @@ def main():
             elif event == HMIEvents.GET:
                 hmi.show_status("Get pressed")
             elif event == HMIEvents.CONFIRM:
-                hmi.show_status("確認 pressed")
-            elif event == HMIEvents.PHOTO_DONE:
-                hmi.show_status("拍好了 pressed")
-            elif event == HMIEvents.RECORD_DONE:
-                hmi.show_status("錄好了 pressed")
+                hmi.show_status("b_confirm pressed")
+            elif event == HMIEvents.BACK:
+                hmi.show_status("Back pressed")
     except KeyboardInterrupt:
         print("\nStopping HMI test.")
     finally:
