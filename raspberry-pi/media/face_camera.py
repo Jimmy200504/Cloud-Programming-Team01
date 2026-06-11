@@ -66,7 +66,8 @@ class FaceCamera:
 
     def capture_when_face(self, save_path: str,
                           timeout: float = config.FACE_DETECT_TIMEOUT,
-                          stable_frames: int = config.FACE_DETECT_STABLE_FRAMES) -> str:
+                          stable_frames: int = config.FACE_DETECT_STABLE_FRAMES,
+                          should_cancel=None) -> str:
         """
         開相機持續偵測,連續 stable_frames 幀都偵測到「有人臉」才拍那一幀存檔。
         timeout 秒內都沒偵測到臉則回傳 None(讓上層提示重試)。
@@ -95,6 +96,9 @@ class FaceCamera:
             deadline = time.time() + timeout
             hit = 0   # 連續偵測到臉的幀數
             while time.time() < deadline:
+                if should_cancel is not None and should_cancel():
+                    print("人臉偵測已取消")
+                    return None
                 ret, frame = cap.read()
                 if not ret:
                     continue

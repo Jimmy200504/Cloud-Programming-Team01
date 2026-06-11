@@ -11,6 +11,7 @@ Expected HMI button events:
     Put      -> printh 01
     Get      -> printh 02
     b_confirm -> printh 13
+    Back     -> printh 14
 """
 
 import os
@@ -55,6 +56,8 @@ def main():
                 hmi.show_status("Get pressed")
             elif event == HMIEvents.CONFIRM:
                 hmi.show_status("b_confirm pressed")
+            elif event == HMIEvents.BACK:
+                hmi.show_status("Back pressed")
     except KeyboardInterrupt:
         print("\nStopping HMI test.")
     finally:

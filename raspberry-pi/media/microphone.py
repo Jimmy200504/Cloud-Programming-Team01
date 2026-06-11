@@ -118,3 +118,14 @@ class Microphone:
         secs = len(data) / self.sample_rate if len(data) else 0
         print(f"錄音結束({secs:.1f} 秒)→ {save_path}")
         return save_path
+
+    def discard(self):
+        """取消串流錄音並丟棄已收集的音框。"""
+        if config.MOCK_MODE:
+            print("[Mock] 取消錄音")
+            return
+        if self._stream is not None:
+            self._stream.stop()
+            self._stream.close()
+            self._stream = None
+        self._frames = []

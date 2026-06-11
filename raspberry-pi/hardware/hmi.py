@@ -8,6 +8,7 @@ Display design contract:
       Get button -> printh 02
   - Flow buttons:
       Confirm button (b_confirm) -> printh 13
+      Back button -> printh 14
   - Status text component:
       t_status
   - Climate text components on page0 and page1:
@@ -55,6 +56,7 @@ class HMIEvents:
     PUT = HMIEvent(0x01, "put")
     GET = HMIEvent(0x02, "get")
     CONFIRM = HMIEvent(0x13, "confirm")
+    BACK = HMIEvent(0x14, "back")
 
 
 EVENTS_BY_CODE = {
@@ -63,6 +65,7 @@ EVENTS_BY_CODE = {
         HMIEvents.PUT,
         HMIEvents.GET,
         HMIEvents.CONFIRM,
+        HMIEvents.BACK,
     )
 }
 
@@ -76,6 +79,9 @@ BUTTON_EVENTS = {
     "record_done": HMIEvents.CONFIRM,
     "拍好了": HMIEvents.CONFIRM,
     "錄好了": HMIEvents.CONFIRM,
+    "back": HMIEvents.BACK,
+    "b_back": HMIEvents.BACK,
+    "返回": HMIEvents.BACK,
 }
 
 FLOW_BUTTON_COMPONENTS = {
@@ -326,6 +332,7 @@ class HMI:
         name: str,
         timeout: Optional[float] = DEFAULT_WAIT_TIMEOUT_SECONDS,
         visible_while_waiting: bool = True,
+        cancel_events: tuple[HMIEvent, ...] = (),
     ) -> Optional[HMIEvent]:
         """Wait until a specific logical button is pressed."""
         expected = BUTTON_EVENTS[name]
@@ -340,6 +347,8 @@ class HMI:
                 event = self.wait_event(timeout=remaining)
                 if event is None:
                     return None
+                if event in cancel_events:
+                    return event
                 if event == expected:
                     return event
         finally:
@@ -371,7 +380,7 @@ class HMI:
     def _wait_mock_event(self, timeout: Optional[float]) -> Optional[HMIEvent]:
         prompt = (
             "[Mock HMI] press: "
-            "1=put, 2=get, 13=confirm, q=timeout/quit: "
+            "1=put, 2=get, 13=confirm, 14=back, q=timeout/quit: "
         )
         raw = input(prompt).strip().lower()
         if raw in ("", "q"):
@@ -426,6 +435,10 @@ def hmi_show_climate(temperature, humidity):
     get_default_hmi().show_climate(temperature, humidity)
 
 
-def hmi_button(name: str, timeout: Optional[float] = DEFAULT_WAIT_TIMEOUT_SECONDS) -> Optional[HMIEvent]:
+def hmi_button(
+    name: str,
+    timeout: Optional[float] = DEFAULT_WAIT_TIMEOUT_SECONDS,
+    cancel_events: tuple[HMIEvent, ...] = (),
+) -> Optional[HMIEvent]:
     """Drop-in helper for waiting on a named HMI button."""
-    return get_default_hmi().wait_button(name, timeout=timeout)
+    return get_default_hmi().wait_button(name, timeout=timeout, cancel_events=cancel_events)
