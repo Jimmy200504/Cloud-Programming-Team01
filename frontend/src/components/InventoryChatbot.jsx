@@ -137,6 +137,10 @@ function answerInventoryQuestion(question, foods, summary) {
   const normalized = normalizeText(question);
   const matchedFoods = findMentionedFoods(normalized, foods);
 
+  if (asksLatestExpiration(normalized)) {
+    return formatLatestExpiration(summary);
+  }
+
   if (asksNearestExpiration(normalized)) {
     return formatNearestExpiration(summary);
   }
@@ -247,10 +251,31 @@ function formatNearestExpiration(summary) {
   return "目前沒有可判斷到期日的食物。";
 }
 
+function formatLatestExpiration(summary) {
+  const food = [...summary.upcomingFoods].reverse()[0];
+  if (food) {
+    return `最晚過期的是 ${formatFoodLine(food)}。`;
+  }
+
+  if (summary.expired.length > 0) {
+    return `目前沒有未來才到期的食物，全部可判斷的項目都已過期：${summary.expired.map(formatFoodLine).join("；")}`;
+  }
+
+  return "目前沒有可判斷到期日的食物。";
+}
+
 function formatFoodLine(food) {
   const days = daysUntil(food.expirationDate);
   const daysText = days === null ? "剩餘天數未知" : days < 0 ? `已過期 ${Math.abs(days)} 天` : `剩 ${days} 天`;
   return `${getFoodDisplayName(food)}，${formatDate(food.expirationDate)} 到期，${daysText}`;
+}
+
+function asksLatestExpiration(value) {
+  const asksOrder = ["最晚", "最久", "最後", "最慢", "latest", "last", "furthest"].some((term) =>
+    value.includes(term)
+  );
+  const asksExpiration = ["過期", "到期", "expire", "expiration"].some((term) => value.includes(term));
+  return asksOrder && asksExpiration;
 }
 
 function asksNearestExpiration(value) {

@@ -167,6 +167,14 @@ utterances_file "$TMP_DIR/nearest_expiration.json" \
   "第一個快過期的是什麼" \
   "哪個先過期"
 
+utterances_file "$TMP_DIR/latest_expiration.json" \
+  "What expires last" \
+  "Which food expires latest" \
+  "What is the latest expiring item" \
+  "最晚過期的是什麼" \
+  "我的食物中最晚過期的是" \
+  "哪個最後過期"
+
 utterances_file "$TMP_DIR/expiring_soon.json" \
   "What is expiring soon" \
   "Show food expiring soon" \
@@ -198,6 +206,7 @@ utterances_file "$TMP_DIR/food_lookup.json" \
 echo "Creating intents"
 create_intent "$BOT_ID" "CheckInventoryIntent" "$TMP_DIR/check_inventory.json" >/dev/null
 create_intent "$BOT_ID" "NearestExpirationIntent" "$TMP_DIR/nearest_expiration.json" >/dev/null
+create_intent "$BOT_ID" "LatestExpirationIntent" "$TMP_DIR/latest_expiration.json" >/dev/null
 create_intent "$BOT_ID" "ExpiringSoonIntent" "$TMP_DIR/expiring_soon.json" >/dev/null
 create_intent "$BOT_ID" "ExpiredFoodIntent" "$TMP_DIR/expired_food.json" >/dev/null
 create_intent "$BOT_ID" "CountInventoryIntent" "$TMP_DIR/count_inventory.json" >/dev/null

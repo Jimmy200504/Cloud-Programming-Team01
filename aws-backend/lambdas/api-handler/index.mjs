@@ -910,20 +910,49 @@ function answerInventoryChat({ question, foods, lex }) {
   const lexIntent = normalizeChatText(lex.intentName);
   const slotFoodName = normalizeChatText(lex.slots?.FoodName || lex.slots?.foodName);
   const mentionedFoods = findChatMentionedFoods(slotFoodName || normalized, foods);
+  const locallyMentionedFoods = findChatMentionedFoods(normalized, foods);
 
-  if (["nearest expiration intent", "nearestexpirationintent", "next expiring food intent"].includes(lexIntent) || asksNearestExpirationText(normalized)) {
+  if (asksLatestExpirationText(normalized)) {
+    return formatLatestChatExpiration(summary);
+  }
+
+  if (asksNearestExpirationText(normalized)) {
     return formatNearestChatExpiration(summary);
   }
 
-  if (["expiring soon intent", "expiringsoonintent"].includes(lexIntent) || asksExpiringSoonText(normalized)) {
-    return formatChatFoodList(summary.expiringSoon, "接下來 2 天內快過期的食物", "目前沒有 2 天內快過期的食物。");
-  }
-
-  if (["expired food intent", "expiredfoodintent"].includes(lexIntent) || asksExpiredText(normalized)) {
+  if (asksExpiredText(normalized)) {
     return formatChatFoodList(summary.expired, "已過期的食物", "目前沒有已過期的食物。");
   }
 
-  if (["count inventory intent", "countinventoryintent"].includes(lexIntent) || asksCountText(normalized)) {
+  if (asksCountText(normalized)) {
+    return `目前冰箱裡共有 ${foods.length} 項食物。${summary.countsText ? ` ${summary.countsText}` : ""}`;
+  }
+
+  if (locallyMentionedFoods.length > 0) {
+    return formatMatchedChatFoods(locallyMentionedFoods);
+  }
+
+  if (asksAllInventoryText(normalized)) {
+    return formatChatFoodList(summary.sortedFoods, "目前冰箱內容物", "目前庫存是空的。");
+  }
+
+  if (asksExpiringSoonText(normalized)) {
+    return formatChatFoodList(summary.expiringSoon, "接下來 2 天內快過期的食物", "目前沒有 2 天內快過期的食物。");
+  }
+
+  if (["latest expiration intent", "latestexpirationintent"].includes(lexIntent)) {
+    return formatLatestChatExpiration(summary);
+  }
+
+  if (["nearest expiration intent", "nearestexpirationintent", "next expiring food intent"].includes(lexIntent)) {
+    return formatNearestChatExpiration(summary);
+  }
+
+  if (["expired food intent", "expiredfoodintent"].includes(lexIntent)) {
+    return formatChatFoodList(summary.expired, "已過期的食物", "目前沒有已過期的食物。");
+  }
+
+  if (["count inventory intent", "countinventoryintent"].includes(lexIntent)) {
     return `目前冰箱裡共有 ${foods.length} 項食物。${summary.countsText ? ` ${summary.countsText}` : ""}`;
   }
 
@@ -931,8 +960,12 @@ function answerInventoryChat({ question, foods, lex }) {
     return formatMatchedChatFoods(mentionedFoods);
   }
 
-  if (["check inventory intent", "checkinventoryintent"].includes(lexIntent) || asksAllInventoryText(normalized)) {
+  if (["check inventory intent", "checkinventoryintent"].includes(lexIntent)) {
     return formatChatFoodList(summary.sortedFoods, "目前冰箱內容物", "目前庫存是空的。");
+  }
+
+  if (["expiring soon intent", "expiringsoonintent"].includes(lexIntent)) {
+    return formatChatFoodList(summary.expiringSoon, "接下來 2 天內快過期的食物", "目前沒有 2 天內快過期的食物。");
   }
 
   return `目前有 ${foods.length} 項食物。${formatChatFoodList(summary.sortedFoods.slice(0, 5), "庫存摘要", "")}`;
@@ -1033,6 +1066,19 @@ function formatNearestChatExpiration(summary) {
   return "目前沒有可判斷到期日的食物。";
 }
 
+function formatLatestChatExpiration(summary) {
+  const food = [...summary.upcomingFoods].reverse()[0];
+  if (food) {
+    return `最晚過期的是 ${formatChatFoodLine(food)}。`;
+  }
+
+  if (summary.expired.length > 0) {
+    return `目前沒有未來才到期的食物，全部可判斷的項目都已過期：${summary.expired.map(formatChatFoodLine).join("；")}`;
+  }
+
+  return "目前沒有可判斷到期日的食物。";
+}
+
 function formatChatFoodLine(food) {
   const days = daysUntilDate(food.expirationDate);
   const daysText = days === null ? "剩餘天數未知" : days < 0 ? `已過期 ${Math.abs(days)} 天` : `剩 ${days} 天`;
@@ -1054,6 +1100,14 @@ function daysUntilDate(dateValue) {
 
 function formatDateOnly(value) {
   return value ? String(value).slice(0, 10) : "unknown";
+}
+
+function asksLatestExpirationText(value) {
+  const asksOrder = ["最晚", "最久", "最後", "最慢", "latest", "last", "furthest"].some((term) =>
+    value.includes(term)
+  );
+  const asksExpiration = ["過期", "到期", "expire", "expiration"].some((term) => value.includes(term));
+  return asksOrder && asksExpiration;
 }
 
 function asksNearestExpirationText(value) {
