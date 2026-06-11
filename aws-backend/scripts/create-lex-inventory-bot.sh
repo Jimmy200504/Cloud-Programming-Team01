@@ -83,6 +83,35 @@ wait_for_locale_status() {
   return 1
 }
 
+wait_for_bot_version_status() {
+  local bot_id="$1"
+  local bot_version="$2"
+  local wanted="$3"
+  local status
+  for _ in {1..60}; do
+    status="$(aws lexv2-models describe-bot-version \
+      --region "$REGION" \
+      --bot-id "$bot_id" \
+      --bot-version "$bot_version" \
+      --query 'botStatus' \
+      --output text)"
+    if [[ "$status" == "$wanted" ]]; then
+      return 0
+    fi
+    if [[ "$status" == "Failed" || "$status" == "Deleting" ]]; then
+      echo "Bot version reached unexpected status: $status" >&2
+      aws lexv2-models describe-bot-version \
+        --region "$REGION" \
+        --bot-id "$bot_id" \
+        --bot-version "$bot_version" >&2 || true
+      return 1
+    fi
+    sleep 5
+  done
+  echo "Timed out waiting for bot version $bot_version status $wanted" >&2
+  return 1
+}
+
 create_intent() {
   local bot_id="$1"
   local intent_name="$2"
@@ -219,12 +248,15 @@ BOT_VERSION="$(aws lexv2-models create-bot-version \
   --query 'botVersion' \
   --output text)"
 
+wait_for_bot_version_status "$BOT_ID" "$BOT_VERSION" "Available"
+
 echo "Creating alias: $BOT_ALIAS_NAME"
 BOT_ALIAS_ID="$(aws lexv2-models create-bot-alias \
   --region "$REGION" \
   --bot-id "$BOT_ID" \
   --bot-alias-name "$BOT_ALIAS_NAME" \
   --bot-version "$BOT_VERSION" \
+  --bot-alias-locale-settings "$LOCALE_ID={enabled=true}" \
   --query 'botAliasId' \
   --output text)"
 
