@@ -135,3 +135,14 @@ SHADOW_LED_OFF = "off"
 SHADOW_LED_ALERT = "alert"
 # 收到 led=alert 後,LED 閃爍持續秒數,逾時自動關閉並回報 off
 LED_ALERT_SECONDS = 10
+
+# ============================================================
+#  溫濕度警報門檻
+# ============================================================
+# 冰箱溫度高於此值時通知所有已知使用者。
+CLIMATE_TEMPERATURE_MAX_C = 6.0
+# 濕度需落在此安全區間內;低於最小值或高於最大值都會通知。
+CLIMATE_HUMIDITY_MIN_PERCENT = 65.0
+CLIMATE_HUMIDITY_MAX_PERCENT = 85.0
+# 同一類溫濕度警報的最短重寄間隔,避免 telemetry 每次回報都寄信。
+CLIMATE_ALERT_COOLDOWN_SECONDS = 3600

@@ -97,6 +97,7 @@ Globals:
         USER_FACE_TABLE_NAME: !Ref UserFaceTable
         FACE_IMAGE_BUCKET_NAME: !Ref FaceImageBucket
         FOOD_IMAGE_BUCKET_NAME: !Ref FoodImageBucket
+        USER_POOL_ID: !Ref UserPool
         USER_POOL_CLIENT_ID: !Ref UserPoolClient
         REKOGNITION_COLLECTION_ID: !Ref RekognitionCollectionId
         FACE_MATCH_THRESHOLD: !Ref FaceMatchThreshold
@@ -307,35 +308,6 @@ Resources:
             Resource:
               - !Sub arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/$aws/things/${DeviceId}/shadow/*
 
-  SesSenderIdentity:
-    Type: AWS::SES::EmailIdentity
-    Condition: HasSesFromEmail
-    Properties:
-      EmailIdentity: !Ref SesFromEmail
-
-  LambdaDeviceShadowSesPolicy:
-    Type: AWS::IAM::Policy
-    Properties:
-      PolicyName: !Sub smart-fridge-${StageName}-device-shadow-ses
-      Roles:
-        - !Ref LambdaExecutionRoleName
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Sid: AllowLambdaDeviceShadowAccess
-            Effect: Allow
-            Action:
-              - iot:GetThingShadow
-              - iot:UpdateThingShadow
-            Resource:
-              - !Sub arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:thing/${DeviceId}
-          - Sid: AllowLambdaOwnerAlertEmail
-            Effect: Allow
-            Action:
-              - ses:SendEmail
-              - ses:SendRawEmail
-            Resource: "*"
-
   ApiHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -424,6 +396,14 @@ Resources:
             RestApiId: !Ref SmartFridgeApi
             Path: /device/{deviceId}/lock
             Method: POST
+        SendClimateAlert:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartFridgeApi
+            Path: /device/{deviceId}/climate-alert
+            Method: POST
+            Auth:
+              Authorizer: NONE
 
 Outputs:
   ApiBaseUrl:

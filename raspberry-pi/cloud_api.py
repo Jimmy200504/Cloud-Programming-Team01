@@ -96,6 +96,8 @@ class CloudAPIClient:
                     "expiration": {"expirationDate": "2026-09-04",
                                    "expirationDuration": "P3M",
                                    "transcript": "三個月後"}}
+        if route.endswith("/climate-alert"):
+            return {"success": True, "alertSent": True, "mock": True}
         return {"success": True}
 
     # ------------------------------------------------------------
@@ -177,3 +179,17 @@ class CloudAPIClient:
             "timezone": self.timezone_name,
         }
         return self._post("/expiration/parse", payload)
+
+    def send_climate_alert(self, temperature, humidity, captured_at: str = None) -> dict:
+        """
+        溫濕度超標警報:通知後端寄信給所有已知 user。
+        實際是否寄出由後端根據門檻與 SES 狀態判斷。
+        """
+        payload = {
+            "deviceId": self.device_id,
+            "temperature": temperature,
+            "humidity": humidity,
+            "capturedAt": captured_at or _now_iso(),
+            "timezone": self.timezone_name,
+        }
+        return self._post(f"/device/{self.device_id}/climate-alert", payload)

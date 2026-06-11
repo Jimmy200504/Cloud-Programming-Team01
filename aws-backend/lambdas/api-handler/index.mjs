@@ -4,6 +4,7 @@ const FOOD_TABLE_NAME = process.env.FOOD_TABLE_NAME;
 const USER_FACE_TABLE_NAME = process.env.USER_FACE_TABLE_NAME;
 const FACE_IMAGE_BUCKET_NAME = process.env.FACE_IMAGE_BUCKET_NAME;
 const FOOD_IMAGE_BUCKET_NAME = process.env.FOOD_IMAGE_BUCKET_NAME;
+const USER_POOL_ID = process.env.USER_POOL_ID;
 const USER_POOL_CLIENT_ID = process.env.USER_POOL_CLIENT_ID;
 const REKOGNITION_COLLECTION_ID = process.env.REKOGNITION_COLLECTION_ID || "ml-smart-fridge-faces";
 const FACE_MATCH_THRESHOLD = Number(process.env.FACE_MATCH_THRESHOLD || "85");
@@ -21,6 +22,9 @@ const ML_TRANSCRIBE_POLL_SECONDS = Number(process.env.ML_TRANSCRIBE_POLL_SECONDS
 const ML_TRANSCRIBE_TIMEOUT_SECONDS = Number(process.env.ML_TRANSCRIBE_TIMEOUT_SECONDS || "180");
 const ML_BEDROCK_DURATION_MIN_CONFIDENCE = Number(process.env.ML_BEDROCK_DURATION_MIN_CONFIDENCE || "0.7");
 const SES_FROM_EMAIL = process.env.SES_FROM_EMAIL;
+const CLIMATE_TEMPERATURE_MAX_C = 6;
+const CLIMATE_HUMIDITY_MIN_PERCENT = 65;
+const CLIMATE_HUMIDITY_MAX_PERCENT = 85;
 
 const FOOD_CATALOG = [
   { id: "soy_milk", displayName: "Soy milk", zhName: "豆漿", aliases: ["soy milk", "soymilk", "豆漿", "豆浆"], parent: "milk", category: "beverage" },
@@ -120,6 +124,11 @@ export const handler = async (event) => {
     const lockMatch = path.match(/^\/device\/([^/]+)\/lock$/);
     if (method === "POST" && lockMatch) {
       return json(200, await updateLock(lockMatch[1], body));
+    }
+
+    const climateAlertMatch = path.match(/^\/device\/([^/]+)\/climate-alert$/);
+    if (method === "POST" && climateAlertMatch) {
+      return json(200, await sendClimateAlert(climateAlertMatch[1], body));
     }
 
     return json(404, {
@@ -697,6 +706,98 @@ async function updateLock(deviceId, body) {
     success: true,
     deviceId,
     desiredLock: body.desiredLock
+  };
+}
+
+async function sendClimateAlert(deviceId, body) {
+  const temperature = numberOrNull(body.temperature);
+  const humidity = numberOrNull(body.humidity);
+  const capturedAt = body.capturedAt || body.lastSeenAt || new Date().toISOString();
+  const alerts = climateAlertsFor({ temperature, humidity });
+
+  if (temperature === null && humidity === null) {
+    return {
+      success: false,
+      errorCode: "INVALID_CLIMATE_READING",
+      message: "temperature or humidity is required"
+    };
+  }
+
+  if (alerts.length === 0) {
+    return {
+      success: true,
+      alertSent: false,
+      deviceId,
+      temperature,
+      humidity,
+      capturedAt,
+      message: "Climate is within the configured safe range"
+    };
+  }
+
+  const recipients = await getAllKnownUserEmails();
+  if (recipients.length === 0) {
+    return {
+      success: false,
+      alertSent: false,
+      errorCode: "NO_ALERT_RECIPIENTS",
+      deviceId,
+      temperature,
+      humidity,
+      capturedAt,
+      alerts,
+      message: "No user email addresses were found"
+    };
+  }
+
+  const subject = "Smart Fridge climate alert";
+  const bodyText = [
+    "Smart Fridge detected an unsafe climate reading.",
+    "",
+    `Device: ${deviceId}`,
+    `Temperature: ${temperature === null ? "unknown" : `${temperature} C`}`,
+    `Humidity: ${humidity === null ? "unknown" : `${humidity}%`}`,
+    `Time: ${capturedAt}`,
+    "",
+    "Alerts:",
+    ...alerts.map((alert) => `- ${alert.message}`)
+  ].join("\n");
+
+  const results = await sendEmailToRecipients({
+    recipients,
+    subject,
+    bodyText
+  });
+
+  let shadowAlertUpdated = false;
+  if (!MOCK_MODE) {
+    try {
+      await updateThingShadow(deviceId, { desired: { led: "alert" } });
+      shadowAlertUpdated = true;
+    } catch (error) {
+      console.error("Unable to update climate alert LED shadow state", error);
+    }
+  }
+
+  return {
+    success: results.failed.length === 0,
+    alertSent: results.sent.length > 0,
+    deviceId,
+    temperature,
+    humidity,
+    capturedAt,
+    thresholds: {
+      temperatureMaxC: CLIMATE_TEMPERATURE_MAX_C,
+      humidityMinPercent: CLIMATE_HUMIDITY_MIN_PERCENT,
+      humidityMaxPercent: CLIMATE_HUMIDITY_MAX_PERCENT
+    },
+    alerts,
+    recipients: {
+      total: recipients.length,
+      sent: results.sent,
+      failed: results.failed
+    },
+    shadowAlertUpdated
   };
 }
 
@@ -1581,26 +1682,184 @@ async function updateThingShadow(deviceId, state) {
 async function sendOwnerAlert({ ownerEmail, foodName, actorUserId }) {
   if (!SES_FROM_EMAIL) return;
 
+  await sendEmail({
+    recipient: ownerEmail,
+    subject: "Smart Fridge food alert",
+    bodyText: `Someone attempted to retrieve your ${foodName}. Actor user id: ${actorUserId}`
+  });
+}
+
+async function sendEmailToRecipients({ recipients, subject, bodyText }) {
+  if (!SES_FROM_EMAIL || MOCK_MODE) {
+    return {
+      sent: [],
+      failed: recipients.map((email) => ({
+        email,
+        error: SES_FROM_EMAIL ? "MOCK_MODE" : "SES_FROM_EMAIL_NOT_CONFIGURED"
+      }))
+    };
+  }
+
+  const sent = [];
+  const failed = [];
+  for (const recipient of recipients) {
+    try {
+      await sendEmail({ recipient, subject, bodyText });
+      sent.push(recipient);
+    } catch (error) {
+      console.error(`Failed to send email to ${recipient}`, error);
+      failed.push({
+        email: recipient,
+        error: error.name || "SEND_EMAIL_FAILED",
+        message: error.message
+      });
+    }
+  }
+
+  return { sent, failed };
+}
+
+async function sendEmail({ recipient, subject, bodyText }) {
   const { SESClient, SendEmailCommand } = await import("@aws-sdk/client-ses");
   const client = new SESClient({});
   await client.send(
     new SendEmailCommand({
       Source: SES_FROM_EMAIL,
       Destination: {
-        ToAddresses: [ownerEmail]
+        ToAddresses: [recipient]
       },
       Message: {
         Subject: {
-          Data: "Smart Fridge food alert"
+          Data: subject
         },
         Body: {
           Text: {
-            Data: `Someone attempted to retrieve your ${foodName}. Actor user id: ${actorUserId}`
+            Data: bodyText
           }
         }
       }
     })
   );
+}
+
+function climateAlertsFor({ temperature, humidity }) {
+  const alerts = [];
+  if (temperature !== null && temperature > CLIMATE_TEMPERATURE_MAX_C) {
+    alerts.push({
+      type: "temperature-high",
+      value: temperature,
+      threshold: CLIMATE_TEMPERATURE_MAX_C,
+      message: `Temperature is above ${CLIMATE_TEMPERATURE_MAX_C} C`
+    });
+  }
+
+  if (
+    humidity !== null &&
+    (humidity < CLIMATE_HUMIDITY_MIN_PERCENT || humidity > CLIMATE_HUMIDITY_MAX_PERCENT)
+  ) {
+    alerts.push({
+      type: humidity < CLIMATE_HUMIDITY_MIN_PERCENT ? "humidity-low" : "humidity-high",
+      value: humidity,
+      safeRange: {
+        min: CLIMATE_HUMIDITY_MIN_PERCENT,
+        max: CLIMATE_HUMIDITY_MAX_PERCENT
+      },
+      message: `Humidity is outside ${CLIMATE_HUMIDITY_MIN_PERCENT}-${CLIMATE_HUMIDITY_MAX_PERCENT}%`
+    });
+  }
+
+  return alerts;
+}
+
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+async function getAllKnownUserEmails() {
+  const emails = new Set();
+  if (USER_POOL_ID) {
+    try {
+      for (const email of await listCognitoUserEmails()) {
+        addNormalizedEmail(emails, email);
+      }
+    } catch (error) {
+      console.error("Unable to list Cognito users for climate alert recipients", error);
+    }
+  }
+
+  if (USER_FACE_TABLE_NAME) {
+    for (const item of await scanAllItems({
+      tableName: USER_FACE_TABLE_NAME,
+      projectionExpression: "email"
+    })) {
+      addNormalizedEmail(emails, item.email);
+    }
+  }
+
+  if (FOOD_TABLE_NAME) {
+    for (const item of await scanAllItems({
+      tableName: FOOD_TABLE_NAME,
+      projectionExpression: "ownerEmail"
+    })) {
+      addNormalizedEmail(emails, item.ownerEmail);
+    }
+  }
+
+  if (emails.size === 0 && mockUser.email) {
+    addNormalizedEmail(emails, mockUser.email);
+  }
+
+  return [...emails].sort();
+}
+
+async function listCognitoUserEmails() {
+  const { CognitoIdentityProviderClient, ListUsersCommand } = await import("@aws-sdk/client-cognito-identity-provider");
+  const client = new CognitoIdentityProviderClient({});
+  const emails = [];
+  let PaginationToken;
+  do {
+    const result = await client.send(
+      new ListUsersCommand({
+        UserPoolId: USER_POOL_ID,
+        PaginationToken
+      })
+    );
+    for (const user of result.Users || []) {
+      const emailAttribute = user.Attributes?.find((attribute) => attribute.Name === "email");
+      if (emailAttribute?.Value) emails.push(emailAttribute.Value);
+    }
+    PaginationToken = result.PaginationToken;
+  } while (PaginationToken);
+
+  return emails;
+}
+
+function addNormalizedEmail(emails, value) {
+  const email = normalizeEmail(value);
+  if (email && email.includes("@")) emails.add(email);
+}
+
+async function scanAllItems({ tableName, projectionExpression }) {
+  const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb");
+  const { DynamoDBDocumentClient, ScanCommand } = await import("@aws-sdk/lib-dynamodb");
+  const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+  const items = [];
+  let ExclusiveStartKey;
+  do {
+    const result = await client.send(
+      new ScanCommand({
+        TableName: tableName,
+        ProjectionExpression: projectionExpression,
+        ExclusiveStartKey
+      })
+    );
+    items.push(...(result.Items || []));
+    ExclusiveStartKey = result.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+
+  return items;
 }
 
 async function putFoodItem(food) {
