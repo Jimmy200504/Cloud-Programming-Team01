@@ -107,6 +107,10 @@ function answerInventoryQuestion(question, foods, summary) {
   const normalized = normalizeText(question);
   const matchedFoods = findMentionedFoods(normalized, foods);
 
+  if (asksNearestExpiration(normalized)) {
+    return formatNearestExpiration(summary);
+  }
+
   if (asksExpiringSoon(normalized)) {
     return formatFoodList(summary.expiringSoon, "接下來 2 天內快過期的食物", "目前沒有 2 天內快過期的食物。");
   }
@@ -158,7 +162,12 @@ function summarizeInventory(foods) {
     .map(([name, count]) => `${name} ${count} 項`)
     .join("、");
 
-  return { sortedFoods, expiringSoon, expired, countsText };
+  const upcomingFoods = sortedFoods.filter((food) => {
+    const days = daysUntil(food.expirationDate);
+    return days !== null && days >= 0;
+  });
+
+  return { sortedFoods, upcomingFoods, expiringSoon, expired, countsText };
 }
 
 function findMentionedFoods(normalizedQuestion, foods) {
@@ -192,10 +201,34 @@ function formatFoodList(foods, title, emptyText) {
   return `${title}：${foods.map(formatFoodLine).join("；")}`;
 }
 
+function formatNearestExpiration(summary) {
+  const food = summary.upcomingFoods[0];
+  if (food) {
+    const expiredNote = summary.expired.length
+      ? ` 另外 ${summary.expired.map((item) => getFoodDisplayName(item)).join("、")} 已經過期。`
+      : "";
+    return `最先快過期的是 ${formatFoodLine(food)}。${expiredNote}`;
+  }
+
+  if (summary.expired.length > 0) {
+    return `目前沒有未來才到期的食物，但有已過期項目：${summary.expired.map(formatFoodLine).join("；")}`;
+  }
+
+  return "目前沒有可判斷到期日的食物。";
+}
+
 function formatFoodLine(food) {
   const days = daysUntil(food.expirationDate);
   const daysText = days === null ? "剩餘天數未知" : days < 0 ? `已過期 ${Math.abs(days)} 天` : `剩 ${days} 天`;
   return `${getFoodDisplayName(food)}，${formatDate(food.expirationDate)} 到期，${daysText}`;
+}
+
+function asksNearestExpiration(value) {
+  const asksOrder = ["第一個", "哪個先", "最先", "最快", "最早", "最近", "next", "first", "earliest"].some((term) =>
+    value.includes(term)
+  );
+  const asksExpiration = ["快過期", "過期", "到期", "expire", "expiration"].some((term) => value.includes(term));
+  return asksOrder && asksExpiration;
 }
 
 function asksExpiringSoon(value) {
