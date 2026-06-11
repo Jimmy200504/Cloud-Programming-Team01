@@ -175,7 +175,7 @@ create_intent "$BOT_ID" "CountInventoryIntent" "$TMP_DIR/count_inventory.json" >
 FOOD_LOOKUP_INTENT_ID="$(create_intent "$BOT_ID" "FoodLookupIntent" "$TMP_DIR/food_lookup.json")"
 
 echo "Creating FoodName slot"
-aws lexv2-models create-slot \
+FOOD_NAME_SLOT_ID="$(aws lexv2-models create-slot \
   --region "$REGION" \
   --bot-id "$BOT_ID" \
   --bot-version DRAFT \
@@ -185,6 +185,19 @@ aws lexv2-models create-slot \
   --slot-type-id AMAZON.AlphaNumeric \
   --value-elicitation-setting 'slotConstraint=Optional' \
   --query 'slotId' \
+  --output text)"
+
+echo "Setting FoodLookupIntent slot priority"
+aws lexv2-models update-intent \
+  --region "$REGION" \
+  --bot-id "$BOT_ID" \
+  --bot-version DRAFT \
+  --locale-id "$LOCALE_ID" \
+  --intent-id "$FOOD_LOOKUP_INTENT_ID" \
+  --intent-name "FoodLookupIntent" \
+  --sample-utterances "file://$TMP_DIR/food_lookup.json" \
+  --slot-priorities "priority=1,slotId=$FOOD_NAME_SLOT_ID" \
+  --query 'intentId' \
   --output text >/dev/null
 
 echo "Building locale"
